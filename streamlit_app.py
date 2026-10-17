@@ -2,18 +2,23 @@
 """
 Student Monthly Result Portal.
 
-Reads Result.xlsx from the SAME directory as this script (works locally and
+Reads result.xlsx from the SAME directory as this script (works locally and
 on Streamlit Community Cloud where the repo is mounted at /mount/src/<repo>).
 
 Sheet layout:
     - FacultyStaffList : column G holds faculty emails (may be prefixed with ')
-    - Result-YY-MM     : A=Roll, B=Name, C=Attendance%, D..M=10 subjects (%)
+    - Result-YY-MM     : A=Roll, B=Name, C=Attendance%, D..M=10 subjects
 
-All numeric/percentage values in columns C..M are displayed as whole-number
-percentages (e.g. "87%" or "—" when empty). No fractions.
+Subject-name lookup:
+    Subject names live in SECTION HEADER rows (rows whose Roll # cell in
+    column A is empty). For each student, we scan upward (max 50 rows) to
+    find their section header row and read the 10 subject names from there.
+    If the header cell is empty, that subject's marks are NOT uploaded.
+
+All numeric/percentage values in columns C..M are shown as whole-number
+percentages (e.g. "87%") with "—" for empty cells. No fractions.
 """
 
-import os
 import re
 from difflib import get_close_matches
 from pathlib import Path
@@ -51,6 +56,9 @@ NAME_COL       = "B"
 ATTENDANCE_COL = "C"
 SUBJECT_COLS   = ["D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
 
+MAX_SECTION_LOOKBACK = 50     # rows to scan upward for section header
+MIN_HEADER_SUBJECT_CELLS = 3  # a row must have >=3 subject cells filled to be a header
+
 # ============================================================
 # UTILITY
 # ============================================================
@@ -66,8 +74,8 @@ def col_letter_to_index(letter: str) -> int:
 def normalize(s) -> str:
     """
     Universal cell normalizer for emails and roll numbers.
-    Strips leading/trailing apostrophes (Excel's force-text prefix), quotes,
-    zero-width chars, BOM, NBSP, and surrounding whitespace. Lower-cases.
+    Strips leading/trailing apostrophes, quotes, zero-width chars, BOM,
+    NBSP, and surrounding whitespace. Returns lower-cased string.
     """
     if s is None or (isinstance(s, float) and pd.isna(s)):
         return ""
@@ -88,24 +96,20 @@ def format_percent(raw) -> str:
     """
     Convert any cell value into a whole-number percentage string.
 
-    Accepts:  None / "" / NaN      -> "—"
-              "87"      (string)   -> "87%"
-              "87%"     (string)   -> "87%"
-              " 87.5% " (string)   -> "88%"   (rounds to nearest int)
-              "0.87"    (fraction) -> "87%"   (converts to %)
-              0.87      (float)    -> "87%"
-              87        (int)      -> "87%"
-              "87.5"    (numeric)  -> "88%"
+    None / NaN / ""       -> "—"
+    "87", 87, 87.0        -> "87%"
+    "87%"                 -> "87%"
+    "87.5%"               -> "88%"
+    0.87  (fraction)      -> "87%"
+    "N/A", "AB"           -> returned unchanged
     """
     if raw is None:
         return "—"
     if isinstance(raw, float) and pd.isna(raw):
         return "—"
 
-    # Already a number (int/float) — Excel stored it as a number, not text.
     if isinstance(raw, (int, float)) and not isinstance(raw, bool):
         val = float(raw)
-        # If between 0 and 1 exclusive, assume it's a fraction → *100
         if 0.0 < val < 1.0:
             val *= 100.0
         return f"{round(val)}%"
@@ -114,7 +118,6 @@ def format_percent(raw) -> str:
     if s == "":
         return "—"
 
-    # Has an explicit percent sign → treat the number as already a percentage.
     if "%" in s:
         m = _PCT_RE.search(s.replace(",", ""))
         if not m:
@@ -124,14 +127,11 @@ def format_percent(raw) -> str:
         except ValueError:
             return "—"
 
-    # No percent sign: try to parse as number.
     try:
         val = float(s.replace(",", ""))
     except ValueError:
-        # Not numeric — return the raw string unchanged (e.g. "AB", "N/A")
         return s
 
-    # If between 0 and 1 exclusive, treat as fraction → percent.
     if 0.0 < val < 1.0:
         val *= 100.0
     return f"{round(val)}%"
@@ -215,6 +215,77 @@ def accepted_emails(_m: float) -> set[str]:
 
 
 # ============================================================
+# SECTION-AWARE SUBJECT-NAME LOOKUP
+# ============================================================
+def find_section_header_row(df: pd.DataFrame, student_row: int):
+    """
+    Walk upward from student_row - 1 looking for the nearest section header.
+
+    A section header is identified by:
+      - Empty Roll # cell in column A, AND
+      - At least MIN_HEADER_SUBJECT_CELLS non-empty cells in subject cols D..M
+        (guards against blank rows or title banners being mistaken for headers).
+
+    Stops after MAX_SECTION_LOOKBACK rows. Returns row index or None.
+    """
+    roll_idx = col_letter_to_index(ROLL_COL)
+    if roll_idx >= len(df.columns):
+        return None
+
+    subject_idx = [
+        col_letter_to_index(c) for c in SUBJECT_COLS
+        if col_letter_to_index(c) < len(df.columns)
+    ]
+
+    start = student_row - 1
+    stop  = max(0, student_row - MAX_SECTION_LOOKBACK)
+    for r in range(start, stop - 1, -1):
+        v = df.iloc[r, roll_idx]
+        if pd.isna(v) or str(v).strip() == "":
+            filled = sum(
+                1 for i in subject_idx
+                if not pd.isna(df.iloc[r, i]) and str(df.iloc[r, i]).strip() != ""
+            )
+            if filled >= MIN_HEADER_SUBJECT_CELLS:
+                return r
+    return None
+
+
+def subject_name_for_section(df: pd.DataFrame,
+                             student_row: int,
+                             col_letter: str) -> str:
+    """
+    Subject name for the student's section, read from the nearest section
+    header above the student's row.
+
+    Returns:
+      - 'NotUploaded' if no header found
+      - 'NotUploaded' if the header cell for this column is empty
+      - 'NotUploaded' if the header cell is purely numeric (mistaken entry)
+      - Otherwise the header cell text
+    """
+    i = col_letter_to_index(col_letter)
+    if i >= len(df.columns):
+        return "NotUploaded"
+
+    header_row = find_section_header_row(df, student_row)
+    if header_row is None:
+        return "NotUploaded"
+
+    v = df.iloc[header_row, i]
+    if pd.isna(v):
+        return "NotUploaded"
+    s = str(v).strip()
+    if s == "":
+        return "NotUploaded"
+    try:
+        float(s.replace(",", "").replace("%", "").strip())
+        return "NotUploaded"
+    except ValueError:
+        return s
+
+
+# ============================================================
 # RESULT LOOKUP
 # ============================================================
 def raw_cell(df: pd.DataFrame, row_idx: int, col_letter: str):
@@ -228,28 +299,6 @@ def raw_cell(df: pd.DataFrame, row_idx: int, col_letter: str):
 def safe_str(df: pd.DataFrame, row_idx: int, col_letter: str) -> str:
     v = raw_cell(df, row_idx, col_letter)
     return "" if v is None else str(v).strip()
-
-
-def subject_header(df: pd.DataFrame, col_letter: str) -> str:
-    """
-    Subject name is at the top of each ~50-student section.
-    - Blank column (all empty)         -> 'NotUploaded'
-    - First non-empty cell is numeric  -> 'NotUploaded' (header missing)
-    - Otherwise                        -> that first non-empty cell
-    """
-    i = col_letter_to_index(col_letter)
-    if i >= len(df.columns):
-        return "NotUploaded"
-    vals = df.iloc[:, i].dropna().astype(str).str.strip()
-    vals = vals[vals != ""]
-    if len(vals) == 0:
-        return "NotUploaded"
-    top = vals.iloc[0]
-    try:
-        float(top.replace(",", "").replace("%", "").strip())
-        return "NotUploaded"
-    except ValueError:
-        return top
 
 
 def find_roll_row(df: pd.DataFrame, roll: str):
@@ -266,12 +315,10 @@ def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
     return {
         "roll":       safe_str(df, row_idx, ROLL_COL),
         "name":       safe_str(df, row_idx, NAME_COL),
-        # attendance always rendered as whole-number percent
         "attendance": format_percent(raw_cell(df, row_idx, ATTENDANCE_COL)),
         "subjects": [
             {
-                "subject": subject_header(df, c),
-                # subject marks always rendered as whole-number percent
+                "subject": subject_name_for_section(df, row_idx, c),
                 "mark":    format_percent(raw_cell(df, row_idx, c)),
             }
             for c in SUBJECT_COLS
@@ -304,7 +351,7 @@ if not EXCEL_FILE.exists():
         f"{sorted(p.name for p in SCRIPT_DIR.iterdir())}"
     )
     st.markdown(
-        "**Fix:** commit `Result.xlsx` to the same folder as "
+        "**Fix:** commit `result.xlsx` to the same folder as "
         "`streamlit_app.py` in your GitHub repo (case-sensitive), "
         "then reboot the app on Streamlit Cloud."
     )
@@ -321,7 +368,7 @@ with st.sidebar:
     st.caption("Workbook")
     st.write(f"`{EXCEL_FILE.name}`")
     try:
-        st.write(f"{EXCEL_FILE.stat().st_size/1024:.1f} KB")
+        st.write(f"{EXCEL_FILE.stat().st_size / 1024:.1f} KB")
     except OSError:
         pass
     st.write(f"Emails on file: **{len(accepted_emails(CURRENT_MTIME))}**")
@@ -470,5 +517,6 @@ if st.session_state.auth:
         st.caption(
             "ℹ️ All marks shown as whole-number percentages. "
             "`NotUploaded` means the subject teacher has not uploaded marks "
-            "for that column yet. `—` means the cell was blank."
+            "for that column yet (the section header has no subject name). "
+            "`—` means the cell was blank."
         )
