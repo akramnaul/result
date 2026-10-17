@@ -1,40 +1,57 @@
 # streamlit_app.py
+"""
+Student Monthly Result Portal.
+
+Reads Result.xlsx from the SAME directory as this script (works locally and
+on Streamlit Community Cloud where the repo is mounted at /mount/src/<repo>).
+
+Sheet layout:
+    - FacultyStaffList : column G holds faculty emails (may be prefixed with ')
+    - Result-YY-MM     : A=Roll, B=Name, C=Attendance%, D..M=10 subjects
+"""
+
 import os
+from difflib import get_close_matches
 from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
 # ============================================================
-# CONFIG
+# CONFIGURATION
 # ============================================================
 SCRIPT_DIR   = Path(__file__).resolve().parent
-EXCEL_FILE   = SCRIPT_DIR / "result.xlsx"   # ⚠️ exact filename on disk
+EXCEL_FILE   = SCRIPT_DIR / "result.xlsx"      # ⚠️ exact filename, case-sensitive
 
 AUTH_SHEET         = "FacultyStaffList"
-AUTH_EMAIL_COLUMN  = "G"   # Excel column letter, 1-based: A=1, G=7
+AUTH_EMAIL_COLUMN  = "G"                       # Excel column letter (A=1, G=7)
 
+# Ordered chronologically. Missing sheets are skipped automatically.
 RESULT_SHEETS = [
     "Result-26-09", "Result-26-10", "Result-26-11", "Result-26-12",
     "Result-27-01", "Result-27-02", "Result-27-03", "Result-27-04",
     "Result-27-05", "Result-27-06", "Result-27-07", "Result-27-08",
 ]
+
 SHEET_LABELS = {
     "Result-26-09": "September 2026", "Result-26-10": "October 2026",
-    "Result-26-11": "November 2026", "Result-26-12": "December 2026",
-    "Result-27-01": "January 2027",  "Result-27-02": "February 2027",
-    "Result-27-03": "March 2027",    "Result-27-04": "April 2027",
-    "Result-27-05": "May 2027",      "Result-27-06": "June 2027",
-    "Result-27-07": "July 2027",     "Result-27-08": "August 2027",
+    "Result-26-11": "November 2026",  "Result-26-12": "December 2026",
+    "Result-27-01": "January 2027",   "Result-27-02": "February 2027",
+    "Result-27-03": "March 2027",     "Result-27-04": "April 2027",
+    "Result-27-05": "May 2027",       "Result-27-06": "June 2027",
+    "Result-27-07": "July 2027",      "Result-27-08": "August 2027",
 }
+
 ROLL_COL       = "A"
 NAME_COL       = "B"
 ATTENDANCE_COL = "C"
-SUBJECT_COLS   = list("DEFGHIJKLM")
+SUBJECT_COLS   = ["D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
 
 # ============================================================
-# HELPERS
+# UTILITY
 # ============================================================
 def col_letter_to_index(letter: str) -> int:
+    """'A' -> 0, 'B' -> 1, ..., 'AA' -> 26."""
     letter = letter.upper()
     n = 0
     for ch in letter:
@@ -42,24 +59,50 @@ def col_letter_to_index(letter: str) -> int:
     return n - 1
 
 
+def normalize(s) -> str:
+    """
+    Universal cell normalizer used for emails AND roll numbers.
+
+    Handles:
+      - leading/trailing apostrophes (Excel's force-text prefix, e.g. 'foo@x.com)
+      - straight / curly quotes  ' " ` ‘ ’ “ ”
+      - zero-width space, BOM, non-breaking space
+      - surrounding whitespace
+    Returns lower-cased string (safe for both emails and rolls).
+    """
+    if s is None or (isinstance(s, float) and pd.isna(s)):
+        return ""
+    s = str(s)
+    s = (s.replace("\u200b", "")     # zero-width space
+          .replace("\ufeff", "")     # BOM
+          .replace("\xa0", " "))     # non-breaking space
+    s = s.strip()
+    s = s.strip("'\"`‘’“”")
+    s = s.strip()
+    return s.lower()
+
+
 def _mtime() -> float:
-    try:    return EXCEL_FILE.stat().st_mtime
-    except OSError: return 0.0
-
-
-@st.cache_data(show_spinner=False)
-def read_sheet_raw(sheet_name: str, _m: float) -> pd.DataFrame | None:
-    """Load a sheet with NO header assumption (header=None) for raw inspection."""
     try:
-        return pd.read_excel(str(EXCEL_FILE), sheet_name=sheet_name,
-                             header=None, dtype=str)
+        return EXCEL_FILE.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+# ============================================================
+# EXCEL READERS  (cached; invalidated when file mtime changes)
+# ============================================================
+@st.cache_data(show_spinner=False)
+def sheet_names(_m: float) -> list[str]:
+    try:
+        return pd.ExcelFile(str(EXCEL_FILE)).sheet_names
     except Exception:
-        return None
+        return []
 
 
 @st.cache_data(show_spinner=False)
-def read_sheet(sheet_name: str, _m: float) -> pd.DataFrame | None:
-    """Load a sheet normally (first row as header)."""
+def read_sheet(sheet_name: str, _m: float):
+    """Load a sheet with header row 0. Returns DataFrame or None."""
     try:
         xls = pd.ExcelFile(str(EXCEL_FILE))
         if sheet_name not in xls.sheet_names:
@@ -73,216 +116,312 @@ def read_sheet(sheet_name: str, _m: float) -> pd.DataFrame | None:
 
 
 @st.cache_data(show_spinner=False)
-def sheet_names(_m: float) -> list[str]:
-    try:    return pd.ExcelFile(str(EXCEL_FILE)).sheet_names
-    except Exception: return []
+def read_sheet_raw(sheet_name: str, _m: float):
+    """Load a sheet with header=None, for diagnostic display only."""
+    try:
+        return pd.read_excel(str(EXCEL_FILE), sheet_name=sheet_name,
+                             header=None, dtype=str)
+    except Exception:
+        return None
 
 
-def normalize_email(s: str) -> str:
-    """Aggressive normalization: str, strip, lowercase, remove zero-width chars."""
-    if s is None: return ""
-    s = str(s)
-    s = s.replace("\u200b", "").replace("\ufeff", "").replace("\xa0", " ")
-    return s.strip().lower()
-
-
-def collect_emails_from_column_g() -> set[str]:
+# ============================================================
+# AUTHENTICATION
+# ============================================================
+@st.cache_data(show_spinner=False)
+def accepted_emails(_m: float) -> set[str]:
     """
-    Try several interpretations of 'Column G' and collect ALL email-looking
-    values found. Returns set of normalized emails so auth succeeds no matter
-    which interpretation matches the real file layout.
+    Build the set of accepted faculty emails.
+    Looks at Column G of FacultyStaffList, normalized (apostrophe/quote-safe).
+    Also scans every column for email-looking values as a safety net.
     """
     emails: set[str] = set()
+    raw = read_sheet_raw(AUTH_SHEET, _m)
+    if raw is None:
+        return emails
 
-    # ---- Interpretation 1: header=None, positional column G (index 6) ----
-    raw = read_sheet_raw(AUTH_SHEET, _mtime())
-    if raw is not None:
-        g_idx = col_letter_to_index(AUTH_EMAIL_COLUMN)
-        if g_idx < raw.shape[1]:
-            for v in raw.iloc[:, g_idx].dropna():
-                n = normalize_email(v)
+    g_idx = col_letter_to_index(AUTH_EMAIL_COLUMN)
+    if g_idx < raw.shape[1]:
+        for v in raw.iloc[:, g_idx].dropna():
+            n = normalize(v)
+            if "@" in n:
+                emails.add(n)
+
+    # Safety net: any column whose values mostly look like emails
+    for c in range(raw.shape[1]):
+        col_vals = raw.iloc[:, c].dropna().astype(str)
+        if len(col_vals) == 0:
+            continue
+        hits = sum(1 for v in col_vals if "@" in v)
+        if hits >= 3 and hits >= len(col_vals) * 0.3:
+            for v in col_vals:
+                n = normalize(v)
                 if "@" in n:
                     emails.add(n)
-
-        # ---- Interpretation 2: header=None, ANY column that looks like email ----
-        for c in range(raw.shape[1]):
-            col_vals = raw.iloc[:, c].dropna()
-            hits = sum(1 for v in col_vals if "@" in str(v))
-            if hits >= 3 and hits >= len(col_vals) * 0.3:
-                for v in col_vals:
-                    n = normalize_email(v)
-                    if "@" in n:
-                        emails.add(n)
-
-    # ---- Interpretation 3: header=0, column named like 'email' ----
-    df = read_sheet(AUTH_SHEET, _mtime())
-    if df is not None:
-        for c in df.columns:
-            if "email" in str(c).lower() or "mail" in str(c).lower():
-                for v in df[c].dropna():
-                    n = normalize_email(v)
-                    if "@" in n:
-                        emails.add(n)
-
     return emails
 
 
 # ============================================================
-# UI
+# RESULT LOOKUP
 # ============================================================
-st.set_page_config(page_title="Student Result Portal", page_icon="🎓", layout="wide")
-st.title("🎓 Student Monthly Result Portal")
+def safe_cell(df: pd.DataFrame, row_idx: int, col_letter: str) -> str:
+    i = col_letter_to_index(col_letter)
+    if i >= len(df.columns):
+        return ""
+    v = df.iloc[row_idx, i]
+    return "" if pd.isna(v) else str(v).strip()
 
-# File presence
+
+def subject_header(df: pd.DataFrame, col_letter: str) -> str:
+    """
+    Subject name is at the top of each ~50-student section.
+    - Blank column (all empty)              -> 'NotUploaded'
+    - First non-empty cell is numeric       -> 'NotUploaded' (header missing)
+    - Otherwise                             -> that first non-empty cell
+    """
+    i = col_letter_to_index(col_letter)
+    if i >= len(df.columns):
+        return "NotUploaded"
+    vals = df.iloc[:, i].dropna().astype(str).str.strip()
+    vals = vals[vals != ""]
+    if len(vals) == 0:
+        return "NotUploaded"
+    top = vals.iloc[0]
+    try:
+        float(top.replace(",", ""))
+        return "NotUploaded"
+    except ValueError:
+        return top
+
+
+def find_roll_row(df: pd.DataFrame, roll: str):
+    """Return 0-based row index where column A matches `roll`, else None."""
+    i = col_letter_to_index(ROLL_COL)
+    if i >= len(df.columns):
+        return None
+    target = normalize(roll)
+    rolls = df.iloc[:, i].map(normalize)
+    hits = rolls[rolls == target]
+    return hits.index[0] if len(hits) else None
+
+
+def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
+    return {
+        "roll":       safe_cell(df, row_idx, ROLL_COL),
+        "name":       safe_cell(df, row_idx, NAME_COL),
+        "attendance": safe_cell(df, row_idx, ATTENDANCE_COL),
+        "subjects": [
+            {"subject": subject_header(df, c),
+             "mark":    safe_cell(df, row_idx, c)}
+            for c in SUBJECT_COLS
+        ],
+    }
+
+
+# ============================================================
+# UI SETUP
+# ============================================================
+st.set_page_config(
+    page_title="Student Result Portal",
+    page_icon="🎓",
+    layout="wide",
+)
+st.title("🎓 Student Monthly Result Portal")
+st.caption(
+    "Authenticate with your faculty email, then enter a student roll number "
+    "to view all available monthly results."
+)
+
+# --- Startup guard: workbook must be present ---
 if not EXCEL_FILE.exists():
-    st.error(f"❌ Excel file `{EXCEL_FILE.name}` not found at `{SCRIPT_DIR}`.")
-    st.code(f"Files: {sorted(p.name for p in SCRIPT_DIR.iterdir())}")
+    st.error(f"❌ Excel file `{EXCEL_FILE.name}` was not found.")
+    st.markdown("**Diagnostics**")
+    st.code(
+        f"Script directory     : {SCRIPT_DIR}\n"
+        f"Expected file        : {EXCEL_FILE}\n"
+        f"Current working dir  : {Path.cwd()}\n"
+        f"Files in script dir  : "
+        f"{sorted(p.name for p in SCRIPT_DIR.iterdir())}"
+    )
+    st.markdown(
+        "**Fix:** commit `Result.xlsx` to the same folder as "
+        "`streamlit_app.py` in your GitHub repo (case-sensitive), "
+        "then reboot the app on Streamlit Cloud."
+    )
     st.stop()
 
-# Cache invalidation
-_m = _mtime()
+CURRENT_MTIME = _mtime()
 
-# ---------- DEBUG panel ----------
-with st.expander("🔍 Debug — what the app sees in FacultyStaffList", expanded=True):
-    st.write(f"File: `{EXCEL_FILE}`  •  size: {EXCEL_FILE.stat().st_size/1024:.1f} KB")
-    st.write(f"Sheet names in workbook: `{sheet_names(_m)}`")
-
-    raw = read_sheet_raw(AUTH_SHEET, _m)
-    if raw is None:
-        st.error(f"❌ Sheet '{AUTH_SHEET}' not found or unreadable.")
-    else:
-        st.write(f"`{AUTH_SHEET}` raw shape (header=None): **{raw.shape}**")
-        st.write("First 8 rows, ALL columns (repr shows hidden whitespace):")
-        st.dataframe(raw.head(8).applymap(lambda x: repr(x) if pd.notna(x) else x))
-
-        g_idx = col_letter_to_index(AUTH_EMAIL_COLUMN)
-        if g_idx < raw.shape[1]:
-            g_vals = raw.iloc[:, g_idx].dropna().astype(str).tolist()
-            st.write(f"Column **{AUTH_EMAIL_COLUMN}** (index {g_idx}) — "
-                     f"{len(g_vals)} non-empty values, first 10 (repr'd):")
-            st.code("\n".join(repr(v) for v in g_vals[:10]) or "(empty)")
-
-        collected = collect_emails_from_column_g()
-        st.write(f"Emails the app will accept: **{len(collected)}** unique")
-        st.code("\n".join(sorted(collected)[:20]) or "(none detected)")
-
-# ---------- Session ----------
+# --- Session state ---
 st.session_state.setdefault("auth", False)
 st.session_state.setdefault("email", "")
 st.session_state.setdefault("roll", "")
 st.session_state.setdefault("results", [])
 
-# ---------- Step 1: Auth ----------
+# --- Sidebar info ---
+with st.sidebar:
+    st.caption("Workbook")
+    st.write(f"`{EXCEL_FILE.name}`")
+    try:
+        st.write(f"{EXCEL_FILE.stat().st_size/1024:.1f} KB")
+    except OSError:
+        pass
+    st.write(f"Emails on file: **{len(accepted_emails(CURRENT_MTIME))}**")
+
+# --- Debug panel (collapsed by default; open to troubleshoot) ---
+with st.expander("🔍 Debug — what the app sees", expanded=False):
+    st.write(f"Sheet names: `{sheet_names(CURRENT_MTIME)}`")
+    raw = read_sheet_raw(AUTH_SHEET, CURRENT_MTIME)
+    if raw is None:
+        st.error(f"Sheet `{AUTH_SHEET}` not found.")
+    else:
+        g_idx = col_letter_to_index(AUTH_EMAIL_COLUMN)
+        if g_idx < raw.shape[1]:
+            g_vals = raw.iloc[:, g_idx].dropna().astype(str).tolist()
+            st.write(f"Column {AUTH_EMAIL_COLUMN} — {len(g_vals)} values "
+                     f"(repr shows hidden characters):")
+            st.code("\n".join(repr(v) for v in g_vals[:10]) or "(empty)")
+        st.write(f"Accepted emails (normalized): "
+                 f"**{len(accepted_emails(CURRENT_MTIME))}**")
+
+# ============================================================
+# STEP 1 — AUTHENTICATION
+# ============================================================
 st.header("Step 1 — Authenticate")
 
 if not st.session_state.auth:
-    with st.form("auth"):
-        email_in = st.text_input("Faculty email", placeholder="name@example.com")
-        ok = st.form_submit_button("Authenticate")
+    with st.form("auth_form"):
+        email_in = st.text_input(
+            "Faculty email",
+            placeholder="akramnaul@fccollege.edu.pk",
+        )
+        submitted = st.form_submit_button("Authenticate")
 
-    if ok:
-        target = normalize_email(email_in)
+    if submitted:
+        target = normalize(email_in)
         if not target:
-            st.error("❌ Please enter an email.")
+            st.error("❌ Please enter an email address.")
         else:
-            accepted = collect_emails_from_column_g()
+            accepted = accepted_emails(CURRENT_MTIME)
             if target in accepted:
                 st.session_state.auth = True
-                st.session_state.email = email_in.strip()
+                st.session_state.email = target
                 st.rerun()
             else:
-                st.error(f"❌ `{email_in.strip()}` is not in FacultyStaffList.")
-                with st.expander("Why? Show closest matches", expanded=True):
-                    from difflib import get_close_matches
-                    matches = get_close_matches(target, list(accepted), n=5, cutoff=0.5)
+                st.error(
+                    f"❌ `{email_in.strip()}` was not found in "
+                    f"`{AUTH_SHEET}` column {AUTH_EMAIL_COLUMN}."
+                )
+                with st.expander("Show closest matches", expanded=True):
+                    matches = get_close_matches(
+                        target, list(accepted), n=5, cutoff=0.5
+                    )
                     if matches:
                         st.write("Did you mean:")
                         for m in matches:
                             st.code(m)
                     else:
                         st.write(
-                            "No close matches. Confirm your email is spelled "
-                            "exactly as in the workbook (see Debug panel above)."
+                            "No close matches. Check spelling and make sure "
+                            "your email is entered in the workbook."
                         )
 else:
-    st.success(f"✅ Authenticated as: {st.session_state.email}")
+    st.success(f"✅ Authenticated as: `{st.session_state.email}`")
     if st.button("Log out"):
-        for k in ("auth", "email", "roll", "results"):
-            st.session_state[k] = "" if k != "auth" else False
-            if k == "results": st.session_state[k] = []
+        st.session_state.auth = False
+        st.session_state.email = ""
+        st.session_state.roll = ""
+        st.session_state.results = []
         st.rerun()
 
-# ---------- Step 2: Lookup ----------
+# ============================================================
+# STEP 2 — ROLL NUMBER LOOKUP
+# ============================================================
 if st.session_state.auth:
-    st.header("Step 2 — Enter Roll Number")
-    with st.form("roll"):
-        roll_in = st.text_input("Roll number", value=st.session_state.roll)
-        go = st.form_submit_button("Search Results")
+    st.header("Step 2 — Enter Student Roll Number")
 
-    if go:
+    with st.form("roll_form"):
+        roll_in = st.text_input(
+            "Roll number",
+            value=st.session_state.roll,
+        )
+        search = st.form_submit_button("Search Results")
+
+    if search:
         roll = roll_in.strip()
         if not roll:
-            st.error("❌ Enter a roll number.")
+            st.error("❌ Please enter a roll number.")
         else:
             st.session_state.roll = roll
-            found = []
-            for s in [x for x in RESULT_SHEETS if x in set(sheet_names(_m))]:
-                df = read_sheet(s, _m)
-                if df is None: continue
-                g_idx = col_letter_to_index(ROLL_COL)
-                if g_idx >= len(df.columns): continue
-                rolls = df.iloc[:, g_idx].astype(str).str.strip()
-                hit = rolls[rolls == roll]
-                if len(hit) == 0: continue
-                r = hit.index[0]
+            existing = set(sheet_names(CURRENT_MTIME))
+            to_check = [s for s in RESULT_SHEETS if s in existing]
 
-                def cell(letter):
-                    i = col_letter_to_index(letter)
-                    if i >= len(df.columns): return ""
-                    v = df.iloc[r, i]
-                    return "" if pd.isna(v) else str(v).strip()
+            if not to_check:
+                st.error(
+                    "❌ No result sheets found in the workbook. "
+                    "Expected sheets like `Result-26-09`, `Result-26-10`, …"
+                )
+                st.session_state.results = []
+            else:
+                found = []
+                for sheet in to_check:
+                    df = read_sheet(sheet, CURRENT_MTIME)
+                    if df is None:
+                        continue
+                    row = find_roll_row(df, roll)
+                    if row is None:
+                        continue
+                    rec = extract_record(df, row)
+                    rec["sheet"] = sheet
+                    rec["label"] = SHEET_LABELS.get(sheet, sheet)
+                    found.append(rec)
 
-                def header_for(letter):
-                    i = col_letter_to_index(letter)
-                    if i >= len(df.columns): return "NotUploaded"
-                    vals = df.iloc[:, i].dropna().astype(str).str.strip()
-                    vals = vals[vals != ""]
-                    if len(vals) == 0: return "NotUploaded"
-                    top = vals.iloc[0]
-                    try: float(top.replace(",", "")); return "NotUploaded"
-                    except ValueError: return top
+                if not found:
+                    st.error(
+                        f"❌ Roll number `{roll}` was not found in any "
+                        "result sheet. Please try again with the correct "
+                        "roll number."
+                    )
+                    st.session_state.results = []
+                else:
+                    st.session_state.results = found
 
-                found.append({
-                    "sheet": s, "label": SHEET_LABELS.get(s, s),
-                    "roll": cell(ROLL_COL), "name": cell(NAME_COL),
-                    "attendance": cell(ATTENDANCE_COL),
-                    "subjects": [{"subject": header_for(c), "mark": cell(c)}
-                                 for c in SUBJECT_COLS],
-                })
-            st.session_state.results = found
-            if not found:
-                st.error(f"❌ Roll `{roll}` not found in any result sheet.")
-
-    # ---------- Step 3: Display ----------
+    # ============================================================
+    # STEP 3 — DISPLAY RESULTS
+    # ============================================================
     if st.session_state.results:
-        st.header(f"📊 Results — Roll No: {st.session_state.roll}")
+        st.header(f"📊 Results — Roll No: `{st.session_state.roll}`")
         st.subheader(f"Student: {st.session_state.results[0]['name']}")
+        st.markdown("---")
+
         for rec in st.session_state.results:
             with st.container(border=True):
                 st.subheader(f"🗓️ {rec['label']}  ({rec['sheet']})")
                 left, right = st.columns(2)
+
                 with left:
                     st.markdown("**📋 Student Info & Subject Names**")
                     st.write(f"**Roll No:** {rec['roll']}")
                     st.write(f"**Name:** {rec['name']}")
                     st.write(f"**Attendance %:** {rec['attendance']}")
                     st.markdown("---")
+                    st.markdown("**Subjects:**")
                     for s in rec["subjects"]:
                         st.write(f"- {s['subject']}")
+
                 with right:
                     st.markdown("**📝 Marks**")
                     st.write(f"**Name:** {rec['name']}")
                     st.write(f"**Attendance %:** {rec['attendance']}")
                     st.markdown("---")
+                    st.markdown("**Subject → Marks:**")
                     for s in rec["subjects"]:
-                        st.write(f"- **{s['subject']}:** {s['mark'] or '—'}")
+                        mark = s["mark"] if s["mark"] != "" else "—"
+                        st.write(f"- **{s['subject']}:** {mark}")
+
+        st.markdown("---")
+        st.caption(
+            "ℹ️ `NotUploaded` means the subject teacher has not uploaded "
+            "marks for that column yet (the column was blank in the "
+            "workbook)."
+        )
