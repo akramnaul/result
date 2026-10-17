@@ -25,7 +25,7 @@ import streamlit as st
 # CONFIGURATION
 # ============================================================
 SCRIPT_DIR = Path(__file__).resolve().parent
-EXCEL_FILE = SCRIPT_DIR / "Result.xlsx"    # ⚠️ exact filename, case-sensitive
+EXCEL_FILE = SCRIPT_DIR / "result.xlsx"    # ⚠️ exact filename, case-sensitive
 
 AUTH_SHEET        = "FacultyStaffList"
 AUTH_EMAIL_COLUMN = "G"                    # Excel column letter (A=1, G=7)
