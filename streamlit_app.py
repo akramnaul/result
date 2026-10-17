@@ -450,8 +450,10 @@ if st.session_state.auth:
         for rec in st.session_state.results:
             with st.container(border=True):
                 st.subheader(f"🗓️ {rec['label']}  ({rec['sheet']})")
+
                 left, right = st.columns(2)
 
+                # ---------- LEFT: student info + subject names (vertical) ----------
                 with left:
                     st.markdown("**📋 Student Info & Subject Names**")
                     st.write(f"**Roll No:** {rec['roll']}")
@@ -462,12 +464,10 @@ if st.session_state.auth:
                     for s in rec["subjects"]:
                         st.write(f"- {s['subject']}")
 
+                # ---------- RIGHT: subject marks only (vertical) ----------
                 with right:
                     st.markdown("**📝 Marks (percentage)**")
-                    st.write(f"**Name:** {rec['name']}")
-                    st.write(f"**Attendance:** {rec['attendance']}")
                     st.markdown("---")
-                    st.markdown("**Subject → Percentage:**")
                     for s in rec["subjects"]:
                         st.write(f"- **{s['subject']}:** {s['mark']}")
 
