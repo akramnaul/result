@@ -8,7 +8,7 @@ import streamlit as st
 # CONFIG
 # ============================================================
 SCRIPT_DIR   = Path(__file__).resolve().parent
-EXCEL_FILE   = SCRIPT_DIR / result / "result.xlsx"   # ⚠️ exact filename on disk
+EXCEL_FILE   = SCRIPT_DIR / "result.xlsx"   # ⚠️ exact filename on disk
 
 AUTH_SHEET         = "FacultyStaffList"
 AUTH_EMAIL_COLUMN  = "G"   # Excel column letter, 1-based: A=1, G=7
