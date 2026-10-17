@@ -14,8 +14,8 @@ import streamlit as st
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 # ⚠️ Filename on disk — must match EXACTLY (case-sensitive on Linux).
-# Change this one line if your file is "resul.xlsx" instead of "Result.xlsx".
-EXCEL_FILENAME = "Result.xlsx"
+
+EXCEL_FILENAME = "result.xlsx"
 EXCEL_FILE = SCRIPT_DIR / EXCEL_FILENAME
 
 AUTH_SHEET = "FacultyStaffList"
