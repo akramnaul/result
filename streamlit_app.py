@@ -1,4 +1,9 @@
+from pathlib import Path
+import streamlit as st
+import openpyxl
 
+BASE_DIR = Path(__file__).resolve().parent
+WORKBOOK_PATH = BASE_DIR / "resul.xlsx"
 workbook = get_workbook()
 
 with st.sidebar:
