@@ -96,28 +96,34 @@ def format_percent(raw) -> str:
     """
     Convert any cell value into a whole-number percentage string.
 
-    None / NaN / ""       -> "—"
-    "87", 87, 87.0        -> "87%"
-    "87%"                 -> "87%"
-    "87.5%"               -> "88%"
-    0.87  (fraction)      -> "87%"
-    "N/A", "AB"           -> returned unchanged
+    Rules:
+      - None / NaN / ""                 -> "—"
+      - number in (0, 1)   exclusive    -> that fraction × 100 (e.g. 0.87 -> 87%)
+      - number == 1                     -> 100%   (Excel stores 100% as 1)
+      - number > 1 (int or float)       -> already percent, round (e.g. 87 -> 87%)
+      - string with "%"                 -> parse numeric part, round
+      - other non-numeric strings       -> returned unchanged
     """
     if raw is None:
         return "—"
     if isinstance(raw, float) and pd.isna(raw):
         return "—"
 
+    # ---- Numeric cell ----
     if isinstance(raw, (int, float)) and not isinstance(raw, bool):
         val = float(raw)
-        if 0.0 < val < 1.0:
-            val *= 100.0
+        if val == 1.0:                        # 100% stored as 1
+            return "100%"
+        if 0.0 < val < 1.0:                   # fraction
+            return f"{round(val * 100)}%"
         return f"{round(val)}%"
 
+    # ---- String cell ----
     s = str(raw).replace("\xa0", " ").replace("\u200b", "").strip()
     if s == "":
         return "—"
 
+    # Explicit percent sign: value is already a percentage
     if "%" in s:
         m = _PCT_RE.search(s.replace(",", ""))
         if not m:
@@ -127,13 +133,16 @@ def format_percent(raw) -> str:
         except ValueError:
             return "—"
 
+    # Bare numeric string
     try:
         val = float(s.replace(",", ""))
     except ValueError:
-        return s
+        return s  # non-numeric (e.g. "N/A", "AB")
 
+    if val == 1.0:
+        return "100%"
     if 0.0 < val < 1.0:
-        val *= 100.0
+        return f"{round(val * 100)}%"
     return f"{round(val)}%"
 
 
