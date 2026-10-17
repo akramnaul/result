@@ -7,10 +7,14 @@ on Streamlit Community Cloud where the repo is mounted at /mount/src/<repo>).
 
 Sheet layout:
     - FacultyStaffList : column G holds faculty emails (may be prefixed with ')
-    - Result-YY-MM     : A=Roll, B=Name, C=Attendance%, D..M=10 subjects
+    - Result-YY-MM     : A=Roll, B=Name, C=Attendance%, D..M=10 subjects (%)
+
+All numeric/percentage values in columns C..M are displayed as whole-number
+percentages (e.g. "87%" or "—" when empty). No fractions.
 """
 
 import os
+import re
 from difflib import get_close_matches
 from pathlib import Path
 
@@ -20,11 +24,11 @@ import streamlit as st
 # ============================================================
 # CONFIGURATION
 # ============================================================
-SCRIPT_DIR   = Path(__file__).resolve().parent
-EXCEL_FILE   = SCRIPT_DIR / "result.xlsx"      # ⚠️ exact filename, case-sensitive
+SCRIPT_DIR = Path(__file__).resolve().parent
+EXCEL_FILE = SCRIPT_DIR / "Result.xlsx"    # ⚠️ exact filename, case-sensitive
 
-AUTH_SHEET         = "FacultyStaffList"
-AUTH_EMAIL_COLUMN  = "G"                       # Excel column letter (A=1, G=7)
+AUTH_SHEET        = "FacultyStaffList"
+AUTH_EMAIL_COLUMN = "G"                    # Excel column letter (A=1, G=7)
 
 # Ordered chronologically. Missing sheets are skipped automatically.
 RESULT_SHEETS = [
@@ -61,25 +65,76 @@ def col_letter_to_index(letter: str) -> int:
 
 def normalize(s) -> str:
     """
-    Universal cell normalizer used for emails AND roll numbers.
-
-    Handles:
-      - leading/trailing apostrophes (Excel's force-text prefix, e.g. 'foo@x.com)
-      - straight / curly quotes  ' " ` ‘ ’ “ ”
-      - zero-width space, BOM, non-breaking space
-      - surrounding whitespace
-    Returns lower-cased string (safe for both emails and rolls).
+    Universal cell normalizer for emails and roll numbers.
+    Strips leading/trailing apostrophes (Excel's force-text prefix), quotes,
+    zero-width chars, BOM, NBSP, and surrounding whitespace. Lower-cases.
     """
     if s is None or (isinstance(s, float) and pd.isna(s)):
         return ""
     s = str(s)
-    s = (s.replace("\u200b", "")     # zero-width space
-          .replace("\ufeff", "")     # BOM
-          .replace("\xa0", " "))     # non-breaking space
+    s = (s.replace("\u200b", "")
+          .replace("\ufeff", "")
+          .replace("\xa0", " "))
     s = s.strip()
     s = s.strip("'\"`‘’“”")
     s = s.strip()
     return s.lower()
+
+
+_PCT_RE = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def format_percent(raw) -> str:
+    """
+    Convert any cell value into a whole-number percentage string.
+
+    Accepts:  None / "" / NaN      -> "—"
+              "87"      (string)   -> "87%"
+              "87%"     (string)   -> "87%"
+              " 87.5% " (string)   -> "88%"   (rounds to nearest int)
+              "0.87"    (fraction) -> "87%"   (converts to %)
+              0.87      (float)    -> "87%"
+              87        (int)      -> "87%"
+              "87.5"    (numeric)  -> "88%"
+    """
+    if raw is None:
+        return "—"
+    if isinstance(raw, float) and pd.isna(raw):
+        return "—"
+
+    # Already a number (int/float) — Excel stored it as a number, not text.
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        val = float(raw)
+        # If between 0 and 1 exclusive, assume it's a fraction → *100
+        if 0.0 < val < 1.0:
+            val *= 100.0
+        return f"{round(val)}%"
+
+    s = str(raw).replace("\xa0", " ").replace("\u200b", "").strip()
+    if s == "":
+        return "—"
+
+    # Has an explicit percent sign → treat the number as already a percentage.
+    if "%" in s:
+        m = _PCT_RE.search(s.replace(",", ""))
+        if not m:
+            return "—"
+        try:
+            return f"{round(float(m.group(0)))}%"
+        except ValueError:
+            return "—"
+
+    # No percent sign: try to parse as number.
+    try:
+        val = float(s.replace(",", ""))
+    except ValueError:
+        # Not numeric — return the raw string unchanged (e.g. "AB", "N/A")
+        return s
+
+    # If between 0 and 1 exclusive, treat as fraction → percent.
+    if 0.0 < val < 1.0:
+        val *= 100.0
+    return f"{round(val)}%"
 
 
 def _mtime() -> float:
@@ -90,7 +145,7 @@ def _mtime() -> float:
 
 
 # ============================================================
-# EXCEL READERS  (cached; invalidated when file mtime changes)
+# EXCEL READERS  (cached; auto-invalidated when file mtime changes)
 # ============================================================
 @st.cache_data(show_spinner=False)
 def sheet_names(_m: float) -> list[str]:
@@ -107,8 +162,9 @@ def read_sheet(sheet_name: str, _m: float):
         xls = pd.ExcelFile(str(EXCEL_FILE))
         if sheet_name not in xls.sheet_names:
             return None
-        df = pd.read_excel(str(EXCEL_FILE), sheet_name=sheet_name,
-                           header=0, dtype=str)
+        df = pd.read_excel(
+            str(EXCEL_FILE), sheet_name=sheet_name, header=0, dtype=object
+        )
         df.columns = [str(c).strip() for c in df.columns]
         return df
     except Exception:
@@ -117,10 +173,11 @@ def read_sheet(sheet_name: str, _m: float):
 
 @st.cache_data(show_spinner=False)
 def read_sheet_raw(sheet_name: str, _m: float):
-    """Load a sheet with header=None, for diagnostic display only."""
+    """Load with header=None, for diagnostic display only."""
     try:
-        return pd.read_excel(str(EXCEL_FILE), sheet_name=sheet_name,
-                             header=None, dtype=str)
+        return pd.read_excel(
+            str(EXCEL_FILE), sheet_name=sheet_name, header=None, dtype=object
+        )
     except Exception:
         return None
 
@@ -130,11 +187,7 @@ def read_sheet_raw(sheet_name: str, _m: float):
 # ============================================================
 @st.cache_data(show_spinner=False)
 def accepted_emails(_m: float) -> set[str]:
-    """
-    Build the set of accepted faculty emails.
-    Looks at Column G of FacultyStaffList, normalized (apostrophe/quote-safe).
-    Also scans every column for email-looking values as a safety net.
-    """
+    """Set of accepted faculty emails, normalized (apostrophe/quote-safe)."""
     emails: set[str] = set()
     raw = read_sheet_raw(AUTH_SHEET, _m)
     if raw is None:
@@ -147,7 +200,7 @@ def accepted_emails(_m: float) -> set[str]:
             if "@" in n:
                 emails.add(n)
 
-    # Safety net: any column whose values mostly look like emails
+    # Safety net: any column whose values mostly look like emails.
     for c in range(raw.shape[1]):
         col_vals = raw.iloc[:, c].dropna().astype(str)
         if len(col_vals) == 0:
@@ -164,20 +217,25 @@ def accepted_emails(_m: float) -> set[str]:
 # ============================================================
 # RESULT LOOKUP
 # ============================================================
-def safe_cell(df: pd.DataFrame, row_idx: int, col_letter: str) -> str:
+def raw_cell(df: pd.DataFrame, row_idx: int, col_letter: str):
     i = col_letter_to_index(col_letter)
     if i >= len(df.columns):
-        return ""
+        return None
     v = df.iloc[row_idx, i]
-    return "" if pd.isna(v) else str(v).strip()
+    return None if pd.isna(v) else v
+
+
+def safe_str(df: pd.DataFrame, row_idx: int, col_letter: str) -> str:
+    v = raw_cell(df, row_idx, col_letter)
+    return "" if v is None else str(v).strip()
 
 
 def subject_header(df: pd.DataFrame, col_letter: str) -> str:
     """
     Subject name is at the top of each ~50-student section.
-    - Blank column (all empty)              -> 'NotUploaded'
-    - First non-empty cell is numeric       -> 'NotUploaded' (header missing)
-    - Otherwise                             -> that first non-empty cell
+    - Blank column (all empty)         -> 'NotUploaded'
+    - First non-empty cell is numeric  -> 'NotUploaded' (header missing)
+    - Otherwise                        -> that first non-empty cell
     """
     i = col_letter_to_index(col_letter)
     if i >= len(df.columns):
@@ -188,14 +246,13 @@ def subject_header(df: pd.DataFrame, col_letter: str) -> str:
         return "NotUploaded"
     top = vals.iloc[0]
     try:
-        float(top.replace(",", ""))
+        float(top.replace(",", "").replace("%", "").strip())
         return "NotUploaded"
     except ValueError:
         return top
 
 
 def find_roll_row(df: pd.DataFrame, roll: str):
-    """Return 0-based row index where column A matches `roll`, else None."""
     i = col_letter_to_index(ROLL_COL)
     if i >= len(df.columns):
         return None
@@ -207,12 +264,16 @@ def find_roll_row(df: pd.DataFrame, roll: str):
 
 def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
     return {
-        "roll":       safe_cell(df, row_idx, ROLL_COL),
-        "name":       safe_cell(df, row_idx, NAME_COL),
-        "attendance": safe_cell(df, row_idx, ATTENDANCE_COL),
+        "roll":       safe_str(df, row_idx, ROLL_COL),
+        "name":       safe_str(df, row_idx, NAME_COL),
+        # attendance always rendered as whole-number percent
+        "attendance": format_percent(raw_cell(df, row_idx, ATTENDANCE_COL)),
         "subjects": [
-            {"subject": subject_header(df, c),
-             "mark":    safe_cell(df, row_idx, c)}
+            {
+                "subject": subject_header(df, c),
+                # subject marks always rendered as whole-number percent
+                "mark":    format_percent(raw_cell(df, row_idx, c)),
+            }
             for c in SUBJECT_COLS
         ],
     }
@@ -232,7 +293,6 @@ st.caption(
     "to view all available monthly results."
 )
 
-# --- Startup guard: workbook must be present ---
 if not EXCEL_FILE.exists():
     st.error(f"❌ Excel file `{EXCEL_FILE.name}` was not found.")
     st.markdown("**Diagnostics**")
@@ -252,13 +312,11 @@ if not EXCEL_FILE.exists():
 
 CURRENT_MTIME = _mtime()
 
-# --- Session state ---
 st.session_state.setdefault("auth", False)
 st.session_state.setdefault("email", "")
 st.session_state.setdefault("roll", "")
 st.session_state.setdefault("results", [])
 
-# --- Sidebar info ---
 with st.sidebar:
     st.caption("Workbook")
     st.write(f"`{EXCEL_FILE.name}`")
@@ -268,7 +326,6 @@ with st.sidebar:
         pass
     st.write(f"Emails on file: **{len(accepted_emails(CURRENT_MTIME))}**")
 
-# --- Debug panel (collapsed by default; open to troubleshoot) ---
 with st.expander("🔍 Debug — what the app sees", expanded=False):
     st.write(f"Sheet names: `{sheet_names(CURRENT_MTIME)}`")
     raw = read_sheet_raw(AUTH_SHEET, CURRENT_MTIME)
@@ -292,8 +349,7 @@ st.header("Step 1 — Authenticate")
 if not st.session_state.auth:
     with st.form("auth_form"):
         email_in = st.text_input(
-            "Faculty email",
-            placeholder="akramnaul@fccollege.edu.pk",
+            "Faculty email", placeholder="akramnaul@fccollege.edu.pk"
         )
         submitted = st.form_submit_button("Authenticate")
 
@@ -341,10 +397,7 @@ if st.session_state.auth:
     st.header("Step 2 — Enter Student Roll Number")
 
     with st.form("roll_form"):
-        roll_in = st.text_input(
-            "Roll number",
-            value=st.session_state.roll,
-        )
+        roll_in = st.text_input("Roll number", value=st.session_state.roll)
         search = st.form_submit_button("Search Results")
 
     if search:
@@ -403,25 +456,24 @@ if st.session_state.auth:
                     st.markdown("**📋 Student Info & Subject Names**")
                     st.write(f"**Roll No:** {rec['roll']}")
                     st.write(f"**Name:** {rec['name']}")
-                    st.write(f"**Attendance %:** {rec['attendance']}")
+                    st.write(f"**Attendance:** {rec['attendance']}")
                     st.markdown("---")
                     st.markdown("**Subjects:**")
                     for s in rec["subjects"]:
                         st.write(f"- {s['subject']}")
 
                 with right:
-                    st.markdown("**📝 Marks**")
+                    st.markdown("**📝 Marks (percentage)**")
                     st.write(f"**Name:** {rec['name']}")
-                    st.write(f"**Attendance %:** {rec['attendance']}")
+                    st.write(f"**Attendance:** {rec['attendance']}")
                     st.markdown("---")
-                    st.markdown("**Subject → Marks:**")
+                    st.markdown("**Subject → Percentage:**")
                     for s in rec["subjects"]:
-                        mark = s["mark"] if s["mark"] != "" else "—"
-                        st.write(f"- **{s['subject']}:** {mark}")
+                        st.write(f"- **{s['subject']}:** {s['mark']}")
 
         st.markdown("---")
         st.caption(
-            "ℹ️ `NotUploaded` means the subject teacher has not uploaded "
-            "marks for that column yet (the column was blank in the "
-            "workbook)."
+            "ℹ️ All marks shown as whole-number percentages. "
+            "`NotUploaded` means the subject teacher has not uploaded marks "
+            "for that column yet. `—` means the cell was blank."
         )
