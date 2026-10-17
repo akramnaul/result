@@ -1,4 +1,4 @@
-import streamlit as st
+import st
 import pandas as pd
 import os
 from pathlib import Path
@@ -6,12 +6,15 @@ from pathlib import Path
 # ============================================================
 # CONFIGURATION
 # ============================================================
-EXCEL_FILE = "result.xlsx"
-AUTH_SHEET = "FacultyStaffList"
-AUTH_EMAIL_COLUMN = "G"  # Column G contains email addresses
+SCRIPT_DIR = Path(__file__).resolve().parent
 
-# Ordered list of result sheets to check (in chronological order)
-# Order matters: older months first, newer months later
+# ⚠️ Make sure this matches the actual filename on disk exactly
+# (the spec says "result.xlsx", but the error text said "result.xlsx")
+EXCEL_FILE = SCRIPT_DIR / "result.xlsx"
+
+AUTH_SHEET = "FacultyStaffList"
+AUTH_EMAIL_COLUMN = "G"
+
 RESULT_SHEETS = [
     "Result-26-09",
     "Result-26-10",
