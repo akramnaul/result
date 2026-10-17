@@ -451,25 +451,20 @@ if st.session_state.auth:
             with st.container(border=True):
                 st.subheader(f"🗓️ {rec['label']}  ({rec['sheet']})")
 
-                left, right = st.columns(2)
+                # --- Row 1: Roll (left) | Name (right) ---
+                c_left, c_right = st.columns(2)
+                c_left.markdown(f"**Roll No:** {rec['roll']}")
+                c_right.markdown(f"**Name:** {rec['name']}")
 
-                # ---------- LEFT: student info + subject names (vertical) ----------
-                with left:
-                    st.markdown("**📋 Student Info & Subject Names**")
-                    st.write(f"**Roll No:** {rec['roll']}")
-                    st.write(f"**Name:** {rec['name']}")
-                    st.write(f"**Attendance:** {rec['attendance']}")
-                    st.markdown("---")
-                    st.markdown("**Subjects:**")
-                    for s in rec["subjects"]:
-                        st.write(f"- {s['subject']}")
+                # --- Row 2: Attendance (full width) ---
+                st.markdown(f"**Attendance:** {rec['attendance']}")
 
-                # ---------- RIGHT: subject marks only (vertical) ----------
-                with right:
-                    st.markdown("**📝 Marks (percentage)**")
-                    st.markdown("---")
-                    for s in rec["subjects"]:
-                        st.write(f"- **{s['subject']}:** {s['mark']}")
+                st.markdown("---")
+
+                # --- Subjects & marks: one line each ---
+                st.markdown("**Subjects & Marks (%):**")
+                for s in rec["subjects"]:
+                    st.markdown(f"- **{s['subject']}:** {s['mark']}")
 
         st.markdown("---")
         st.caption(
