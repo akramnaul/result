@@ -6,7 +6,7 @@ from pathlib import Path
 # ============================================================
 # CONFIGURATION
 # ============================================================
-EXCEL_FILE = "resul.xlsx"
+EXCEL_FILE = "result.xlsx"
 AUTH_SHEET = "FacultyStaffList"
 AUTH_EMAIL_COLUMN = "G"  # Column G contains email addresses
 
