@@ -345,7 +345,7 @@ st.set_page_config(
 )
 st.title("🎓 Forman Christian College, Lahore")
 st.title("Students' Monthly Test Result Portal")
-st.caption("Authenticate with your FCC email, then a Student Roll Number to view his attendance and All Monthly Test Results.")
+st.caption("Authenticate with your FCC EMail, then a Student Roll Number to view his Attendance and All Monthly Test Results.")
 
 if not EXCEL_FILE.exists():
     st.error(f"❌ Excel file `{EXCEL_FILE.name}` was not found.")
@@ -405,14 +405,14 @@ st.header("Step 1 — Authenticate")
 if not st.session_state.auth:
     with st.form("auth_form"):
         email_in = st.text_input(
-            "Faculty email", placeholder="you@fccollege.edu.pk"
+            "FCC EMail", placeholder="you@fccollege.edu.pk"
         )
         submitted = st.form_submit_button("Authenticate")
 
     if submitted:
         target = normalize(email_in)
         if not target:
-            st.error("❌ Please enter an email address.")
+            st.error("❌ Please Enter a Valid FCC EMail Address.")
         else:
             accepted = accepted_emails(CURRENT_MTIME)
             if target in accepted:
@@ -434,8 +434,7 @@ if not st.session_state.auth:
                             st.code(m)
                     else:
                         st.write(
-                            "No close matches. Check spelling and make sure "
-                            "your email is entered in the workbook."
+                            "No close matches. Check spelling and make sure your email is entered in the workbook."
                         )
 else:
     st.success(f"✅ Authenticated as: `{st.session_state.email}`")
@@ -459,7 +458,7 @@ if st.session_state.auth:
     if search:
         roll = roll_in.strip()
         if not roll:
-            st.error("❌ Please Enter a Roll Number.")
+            st.error("❌ Please Enter a Valid FCC Roll Number.")
         else:
             st.session_state.roll = roll
             existing = set(sheet_names(CURRENT_MTIME))
@@ -487,7 +486,7 @@ if st.session_state.auth:
 
                 if not found:
                     st.error(
-                        f"❌ Roll Number `{roll}` was NOT FOUND in any Result Sheet. Try a Correct / Valid Roll Number."
+                        f"❌ Roll Number `{roll}` was NOT FOUND in any Result Sheet. Try a Correct / Valid FCC Roll Number."
                     )
                     st.session_state.results = []
                 else:
