@@ -345,9 +345,7 @@ st.set_page_config(
 )
 st.title("🎓 Forman Christian College, Lahore")
 st.title("Students' Monthly Test Result Portal")
-st.caption(
-    "Authenticate with your FCC faculty email, then enter a Student Roll Number to view all his Monthly Test Results."
-)
+st.caption("Authenticate with your FCC email, then a Student Roll Number to view his attendance and All Monthly Test Results.")
 
 if not EXCEL_FILE.exists():
     st.error(f"❌ Excel file `{EXCEL_FILE.name}` was not found.")
@@ -380,7 +378,7 @@ with st.sidebar:
         st.write(f"{EXCEL_FILE.stat().st_size / 1024:.1f} KB")
     except OSError:
         pass
-    st.write(f"Emails on file: **{len(accepted_emails(CURRENT_MTIME))}**")
+    st.write(f"Emails On File: **{len(accepted_emails(CURRENT_MTIME))}**")
 
 
 # with st.expander("🔍 Debug — what the app sees", expanded=False):
@@ -489,7 +487,7 @@ if st.session_state.auth:
 
                 if not found:
                     st.error(
-                        f"❌ Roll Number `{roll}` was not found in any Result Sheet. Please try again with the Correct / Valid Roll Number."
+                        f"❌ Roll Number `{roll}` was NOT FOUND in any Result Sheet. Try a Correct / Valid Roll Number."
                     )
                     st.session_state.results = []
                 else:
@@ -508,10 +506,17 @@ if st.session_state.auth:
                 st.subheader(f"🗓️ {rec['label']}  ({rec['sheet']})")
 
                 # --- Row 1: Roll (left) | Name (right) ---
-                c_left, c_right = st.columns(2)
-                c_left.markdown(f"**Roll No:** {rec['roll']}")
-                c_right.markdown(f"**Name:** {rec['name']}")
+                # c_left, c_right = st.columns(2)
+                # c_left.markdown(f"**Roll No:** {rec['roll']}")
+                # c_right.markdown(f"**Name:** {rec['name']}")
 
+                # --- Row 1: Roll No & Name stacked in the left column ---
+                c_left, c_right = st.columns(2)
+                with c_left:
+                    st.markdown(f"**Roll No:** {rec['roll']}")
+                    st.markdown(f"**Name:** {rec['name']}")
+                # c_right is intentionally left empty
+                
                 # --- Row 2: Attendance (full width) ---
                 st.markdown(f"**Attendance:** {rec['attendance']}")
 
