@@ -343,10 +343,9 @@ st.set_page_config(
     page_icon="🎓",
     layout="wide",
 )
-st.title("🎓 Student Monthly Result Portal")
+st.title("🎓 FCC Student Monthly Result Portal")
 st.caption(
-    "Authenticate with your faculty email, then enter a student roll number "
-    "to view all available monthly results."
+    "Authenticate with your FCC faculty email, then enter a student roll number to view all his monthly results."
 )
 
 if not EXCEL_FILE.exists():
