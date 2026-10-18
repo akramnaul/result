@@ -371,14 +371,14 @@ st.session_state.setdefault("email", "")
 st.session_state.setdefault("roll", "")
 st.session_state.setdefault("results", [])
 
-with st.sidebar:
-    st.caption("Workbook")
-    st.write(f"`{EXCEL_FILE.name}`")
-    try:
-        st.write(f"{EXCEL_FILE.stat().st_size / 1024:.1f} KB")
-    except OSError:
-        pass
-    st.write(f"Emails On File: **{len(accepted_emails(CURRENT_MTIME))}**")
+# with st.sidebar:
+#     st.caption("Workbook")
+#     st.write(f"`{EXCEL_FILE.name}`")
+#     try:
+#         st.write(f"{EXCEL_FILE.stat().st_size / 1024:.1f} KB")
+#     except OSError:
+#         pass
+#     st.write(f"Emails On File: **{len(accepted_emails(CURRENT_MTIME))}**")
 
 
 # with st.expander("🔍 Debug — what the app sees", expanded=False):
@@ -497,7 +497,8 @@ if st.session_state.auth:
     # STEP 3 — DISPLAY RESULTS
     # ============================================================
     if st.session_state.results:
-        st.header(f"📊 Results — Roll No: `{st.session_state.roll}`")
+        st.header(f"📊 Results")
+        st.subheader(f"📊 Results — Roll No: `{st.session_state.roll}`")
         st.subheader(f"Student: {st.session_state.results[0]['name']}")
         st.markdown("---")
 
