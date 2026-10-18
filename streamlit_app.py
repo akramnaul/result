@@ -523,10 +523,19 @@ if st.session_state.auth:
                 st.markdown("---")
 
                 # --- Subjects & Marks: one line each ---
-                st.markdown("**Subjects & Marks (%):**")
-                for s in rec["subjects"]:
-                    st.markdown(f"- **{s['subject']}:** {s['mark']}")
+                # st.markdown("**Subjects & Marks (%):**")
+                # for s in rec["subjects"]:
+                #     st.markdown(f"- **{s['subject']}:** {s['mark']}")
 
+                st.markdown("**Subjects & Marks (%):**")
+                lines = []
+                for s in rec["subjects"]:
+                    subj = s["subject"]
+                    if len(subj) > 30:
+                        subj = subj[:27] + "..."
+                    lines.append(f"{subj:<30} {s['mark']:>5}")
+                st.code("\n".join(lines), language="text")
+        
         st.markdown("---")
         st.caption("ℹ️ All marks shown as whole-number percentages.")
         st.caption("ℹ️ `NotUploaded` means the subject teacher has not uploaded marks for that column yet.")
