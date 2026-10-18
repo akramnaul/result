@@ -343,9 +343,9 @@ st.set_page_config(
     page_icon="🎓",
     layout="wide",
 )
-st.title("🎓 FCC Student Monthly Result Portal")
+st.title("🎓 Forman Christian College : Students' Monthly Test Result Portal")
 st.caption(
-    "Authenticate with your FCC faculty email, then enter a student roll number to view all his monthly results."
+    "Authenticate with your FCC faculty email, then enter a Student Roll Number to view all his Monthly Test Results."
 )
 
 if not EXCEL_FILE.exists():
@@ -404,7 +404,7 @@ st.header("Step 1 — Authenticate")
 if not st.session_state.auth:
     with st.form("auth_form"):
         email_in = st.text_input(
-            "Faculty email", placeholder="akramnaul@fccollege.edu.pk"
+            "Faculty email", placeholder="you@fccollege.edu.pk"
         )
         submitted = st.form_submit_button("Authenticate")
 
