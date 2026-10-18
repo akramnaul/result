@@ -382,6 +382,7 @@ with st.sidebar:
         pass
     st.write(f"Emails on file: **{len(accepted_emails(CURRENT_MTIME))}**")
 
+"""
 with st.expander("🔍 Debug — what the app sees", expanded=False):
     st.write(f"Sheet names: `{sheet_names(CURRENT_MTIME)}`")
     raw = read_sheet_raw(AUTH_SHEET, CURRENT_MTIME)
@@ -396,6 +397,7 @@ with st.expander("🔍 Debug — what the app sees", expanded=False):
             st.code("\n".join(repr(v) for v in g_vals[:10]) or "(empty)")
         st.write(f"Accepted emails (normalized): "
                  f"**{len(accepted_emails(CURRENT_MTIME))}**")
+"""
 
 # ============================================================
 # STEP 1 — AUTHENTICATION
@@ -487,7 +489,7 @@ if st.session_state.auth:
 
                 if not found:
                     st.error(
-                        f"❌ Roll Number `{roll}` was not found in any result sheet. Please try again with the correct Roll Number."
+                        f"❌ Roll Number `{roll}` was not found in any Result Sheet. Please try again with the Correct / Valid Roll Number."
                     )
                     st.session_state.results = []
                 else:
