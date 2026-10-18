@@ -382,7 +382,7 @@ with st.sidebar:
         pass
     st.write(f"Emails on file: **{len(accepted_emails(CURRENT_MTIME))}**")
 
-"""
+""""
 with st.expander("🔍 Debug — what the app sees", expanded=False):
     st.write(f"Sheet names: `{sheet_names(CURRENT_MTIME)}`")
     raw = read_sheet_raw(AUTH_SHEET, CURRENT_MTIME)
@@ -397,7 +397,7 @@ with st.expander("🔍 Debug — what the app sees", expanded=False):
             st.code("\n".join(repr(v) for v in g_vals[:10]) or "(empty)")
         st.write(f"Accepted emails (normalized): "
                  f"**{len(accepted_emails(CURRENT_MTIME))}**")
-"""
+""""
 
 # ============================================================
 # STEP 1 — AUTHENTICATION
