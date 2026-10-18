@@ -531,9 +531,9 @@ if st.session_state.auth:
                 lines = []
                 for s in rec["subjects"]:
                     subj = s["subject"]
-                    if len(subj) > 30:
-                        subj = subj[:27] + "..."
-                    lines.append(f"{subj:<30} {s['mark']:>5}")
+                    if len(subj) > 20:
+                        subj = subj[:17] + "..."
+                    lines.append(f"{subj:<20} {s['mark']:>5}")
                 st.code("\n".join(lines), language="text")
         
         st.markdown("---")
