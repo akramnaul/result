@@ -344,7 +344,7 @@ st.set_page_config(
     layout="wide",
 )
 st.title("🎓 Forman Christian College, Lahore")
-st.title("Students' Monthly Test Result Portal")
+st.title("Students' Monthly Test Results Portal")
 st.caption("Authenticate with your FCC EMail, then a Student Roll Number to view his Attendance and All Monthly Test Results.")
 
 if not EXCEL_FILE.exists():
