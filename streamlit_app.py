@@ -498,8 +498,8 @@ if st.session_state.auth:
     # ============================================================
     if st.session_state.results:
         st.header(f"📊 Results")
-        st.subheader(f"📊 Results — Roll No: `{st.session_state.roll}`")
-        st.subheader(f"Student: {st.session_state.results[0]['name']}")
+        st.subheader(f"Student Roll No: `{st.session_state.roll}`")
+        st.subheader(f"Student    Name: `{st.session_state.results[0]['name']}`")
         st.markdown("---")
 
         for rec in st.session_state.results:
