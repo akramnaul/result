@@ -452,13 +452,13 @@ if st.session_state.auth:
     st.header("Step 2 — Enter Student Roll Number")
 
     with st.form("roll_form"):
-        roll_in = st.text_input("Roll number", value=st.session_state.roll)
+        roll_in = st.text_input("Roll Number", value=st.session_state.roll)
         search = st.form_submit_button("Search Results")
 
     if search:
         roll = roll_in.strip()
         if not roll:
-            st.error("❌ Please enter a roll number.")
+            st.error("❌ Please Enter a Roll Number.")
         else:
             st.session_state.roll = roll
             existing = set(sheet_names(CURRENT_MTIME))
@@ -466,8 +466,8 @@ if st.session_state.auth:
 
             if not to_check:
                 st.error(
-                    "❌ No result sheets found in the workbook. "
-                    "Expected sheets like `Result-26-09`, `Result-26-10`, …"
+                    "❌ No Result Sheets Found in the Workbook. "
+                    "Expected Sheets like `Result-26-09`, `Result-26-10`, …"
                 )
                 st.session_state.results = []
             else:
@@ -486,9 +486,7 @@ if st.session_state.auth:
 
                 if not found:
                     st.error(
-                        f"❌ Roll number `{roll}` was not found in any "
-                        "result sheet. Please try again with the correct "
-                        "roll number."
+                        f"❌ Roll Number `{roll}` was not found in any result sheet. Please try again with the correct Roll Number."
                     )
                     st.session_state.results = []
                 else:
@@ -516,7 +514,7 @@ if st.session_state.auth:
 
                 st.markdown("---")
 
-                # --- Subjects & marks: one line each ---
+                # --- Subjects & Marks: one line each ---
                 st.markdown("**Subjects & Marks (%):**")
                 for s in rec["subjects"]:
                     st.markdown(f"- **{s['subject']}:** {s['mark']}")
