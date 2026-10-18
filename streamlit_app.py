@@ -499,7 +499,7 @@ if st.session_state.auth:
     if st.session_state.results:
         st.header("📊 Results")
         st.subheader(f"Roll No: `{st.session_state.roll}`")
-        st.subheader(f"Name ..: `{st.session_state.results[0]['name']}`")
+        st.subheader(f"Name .: `{st.session_state.results[0]['name']}`")
         st.markdown("---")
 
         for rec in st.session_state.results:
@@ -529,9 +529,8 @@ if st.session_state.auth:
                     st.markdown(f"- **{s['subject']}:** {s['mark']}")
 
         st.markdown("---")
-        st.caption(
-            "ℹ️ All marks shown as whole-number percentages. "
-            "`NotUploaded` means the subject teacher has not uploaded marks "
-            "for that column yet (the section header has no subject name). "
-            "`—` means the cell was blank."
-        )
+        st.caption("ℹ️ All marks shown as whole-number percentages.")
+        st.caption("ℹ️ `NotUploaded` means the subject teacher has not uploaded marks for that column yet.")
+        st.caption("ℹ️ The section header has no subject name.")
+        st.caption("ℹ️ `—` means the cell was blank.")
+
