@@ -343,7 +343,8 @@ st.set_page_config(
     page_icon="🎓",
     layout="wide",
 )
-st.title("🎓 Forman Christian College : Students' Monthly Test Result Portal")
+st.title("🎓 Forman Christian College, Lahore")
+st.title("Students' Monthly Test Result Portal")
 st.caption(
     "Authenticate with your FCC faculty email, then enter a Student Roll Number to view all his Monthly Test Results."
 )
