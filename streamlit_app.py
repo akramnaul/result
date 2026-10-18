@@ -382,22 +382,22 @@ with st.sidebar:
         pass
     st.write(f"Emails on file: **{len(accepted_emails(CURRENT_MTIME))}**")
 
-""""
-with st.expander("🔍 Debug — what the app sees", expanded=False):
-    st.write(f"Sheet names: `{sheet_names(CURRENT_MTIME)}`")
-    raw = read_sheet_raw(AUTH_SHEET, CURRENT_MTIME)
-    if raw is None:
-        st.error(f"Sheet `{AUTH_SHEET}` not found.")
-    else:
-        g_idx = col_letter_to_index(AUTH_EMAIL_COLUMN)
-        if g_idx < raw.shape[1]:
-            g_vals = raw.iloc[:, g_idx].dropna().astype(str).tolist()
-            st.write(f"Column {AUTH_EMAIL_COLUMN} — {len(g_vals)} values "
-                     f"(repr shows hidden characters):")
-            st.code("\n".join(repr(v) for v in g_vals[:10]) or "(empty)")
-        st.write(f"Accepted emails (normalized): "
-                 f"**{len(accepted_emails(CURRENT_MTIME))}**")
-""""
+
+# with st.expander("🔍 Debug — what the app sees", expanded=False):
+#     st.write(f"Sheet names: `{sheet_names(CURRENT_MTIME)}`")
+#     raw = read_sheet_raw(AUTH_SHEET, CURRENT_MTIME)
+#     if raw is None:
+#         st.error(f"Sheet `{AUTH_SHEET}` not found.")
+#     else:
+#         g_idx = col_letter_to_index(AUTH_EMAIL_COLUMN)
+#         if g_idx < raw.shape[1]:
+#             g_vals = raw.iloc[:, g_idx].dropna().astype(str).tolist()
+#             st.write(f"Column {AUTH_EMAIL_COLUMN} — {len(g_vals)} values "
+#                      f"(repr shows hidden characters):")
+#             st.code("\n".join(repr(v) for v in g_vals[:10]) or "(empty)")
+#         st.write(f"Accepted emails (normalized): "
+#                  f"**{len(accepted_emails(CURRENT_MTIME))}**")
+
 
 # ============================================================
 # STEP 1 — AUTHENTICATION
