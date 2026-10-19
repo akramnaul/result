@@ -2,7 +2,7 @@
 """
 Student Monthly Result Portal.
 
-Reads resul.xlsx from the SAME directory as this script (works locally and
+Reads result.xlsx from the SAME directory as this script (works locally and
 on Streamlit Community Cloud where the repo is mounted at /mount/src/<repo>).
 
 Sheet layout:
@@ -46,7 +46,7 @@ from openpyxl.styles import Alignment
 # CONFIGURATION
 # ============================================================
 SCRIPT_DIR = Path(__file__).resolve().parent
-EXCEL_FILE = SCRIPT_DIR / "resul.xlsx"    # ⚠️ exact filename, case-sensitive
+EXCEL_FILE = SCRIPT_DIR / "result.xlsx"    # ⚠️ exact filename, case-sensitive
 
 AUTH_SHEET        = "FacultyStaffList"
 AUTH_EMAIL_COLUMN = "G"
