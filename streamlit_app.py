@@ -7,29 +7,33 @@ on Streamlit Community Cloud where the repo is mounted at /mount/src/<repo>).
 
 Sheet layout:
     - FacultyStaffList : column G holds faculty emails (may be prefixed with ')
-                         A log is maintained starting at row 301:
-                           B = Serial, C = EMailID, D = DateTime, E = Activity
-                           Row 300 holds the column headings.
+                         Log maintained starting at row 301:
+                           B=Serial, C=EMailID, D=DateTime, E=Activity
+                           Row 300 holds column headings.
     - Result-YY-MM     : A=Roll, B=Name, C=Attendance%, D..M=10 subjects
 
 Roll numbers:
-    Treated as NUMBERS throughout. When the user enters a roll number, it is
-    converted to an integer if possible, so it matches numeric cells in the
-    result sheets and is written as a numeric value into the log.
+    Treated as NUMBERS throughout. Parsed via normalize_roll() which handles:
+      int, float, "277703108", "'277703108", "277,703,108", "2.777E+08",
+      and strings containing invisible unicode (zero-width space, NEL, etc.).
+    Generalized across any sheet because Excel may store large ints as floats
+    or as text with a hidden prefix.
 
 Subject-name lookup:
-    Subject names live in SECTION HEADER rows (rows whose Roll # cell in
-    column A is empty). For each student, we scan upward (max 50 rows) to
-    find their section header row and read the 10 subject names from there.
-    If the header cell is empty, that subject's marks are NOT uploaded.
+    Subject names live in SECTION HEADER rows (Roll # cell in column A empty,
+    with at least 3 non-empty subject cells in D..M). For each student we scan
+    upward (max 50 rows) to find the nearest section header row and read the
+    10 subject names from there. If the header cell is empty, that subject's
+    marks are marked NotUploaded.
 
 Logging:
-    Every authentication attempt (success or failure) and every roll-number
-    search is appended as a new row to FacultyStaffList, starting at row 301.
+    Every auth attempt (success/failure) and every roll search is appended to
+    FacultyStaffList starting at row 301, with the search activity stored as
+    a NUMBER (not string).
 
 Percentage display:
-    Columns C..M are shown as whole-number percentages (e.g. "87%") with "—"
-    for empty cells. 100 is displayed as 100%, never 1%.
+    Columns C..M shown as whole-number percentages (e.g. "87%"), "—" for empty.
+    100 displays as 100% (never 1%).
 """
 
 import re
@@ -51,7 +55,7 @@ EXCEL_FILE = SCRIPT_DIR / "result.xlsx"    # ⚠️ exact filename, case-sensiti
 AUTH_SHEET        = "FacultyStaffList"
 AUTH_EMAIL_COLUMN = "G"
 
-# Logging configuration (1-based Excel rows/cols)
+# Logging (1-based Excel rows/cols)
 LOG_FIRST_DATA_ROW = 301
 LOG_COL_SERIAL     = 2   # B
 LOG_COL_EMAIL      = 3   # C
@@ -78,13 +82,14 @@ NAME_COL       = "B"
 ATTENDANCE_COL = "C"
 SUBJECT_COLS   = ["D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
 
-MAX_SECTION_LOOKBACK      = 50
-MIN_HEADER_SUBJECT_CELLS  = 3
+MAX_SECTION_LOOKBACK     = 50
+MIN_HEADER_SUBJECT_CELLS = 3
 
 # ============================================================
 # UTILITY
 # ============================================================
 def col_letter_to_index(letter: str) -> int:
+    """'A' -> 0, 'B' -> 1, ..., 'AA' -> 26."""
     letter = letter.upper()
     n = 0
     for ch in letter:
@@ -92,17 +97,22 @@ def col_letter_to_index(letter: str) -> int:
     return n - 1
 
 
-def normalize(s) -> str:
+_INVISIBLE = (
+    "\u200b", "\u200c", "\u200d", "\u2060", "\ufeff",
+    "\xa0", "\u2009", "\u202f", "\u00ad",
+)
+
+
+def normalize(value) -> str:
     """Normalize emails (strip apostrophes, quotes, whitespace; lowercase)."""
-    if s is None or (isinstance(s, float) and pd.isna(s)):
+    if value is None:
         return ""
-    s = str(s)
-    s = (s.replace("\u200b", "")
-          .replace("\ufeff", "")
-          .replace("\xa0", " "))
-    s = s.strip()
-    s = s.strip("'\"`‘’“”")
-    s = s.strip()
+    if isinstance(value, float) and pd.isna(value):
+        return ""
+    s = str(value)
+    for ch in _INVISIBLE:
+        s = s.replace(ch, "")
+    s = s.strip().strip("'\"`‘’“”").strip()
     return s.lower()
 
 
@@ -110,14 +120,16 @@ def normalize_roll(value):
     """
     Convert any roll-number representation into a Python int.
 
-    Handles:  202830101 (int)       -> 202830101
-              202830101.0 (float)   -> 202830101
-              "202830101" (str)     -> 202830101
-              "'202830101" (str)    -> 202830101  (Excel force-text apostrophe)
-              " 202830101 "         -> 202830101
-              202830101 (bool)      -> None       (bools are not roll numbers)
+    Handles:
+      - 277703108 (int)
+      - 277703108.0 (float)
+      - "277703108", "'277703108", " 277703108 "
+      - "277,703,108"
+      - "2.77703108E+08" (Excel scientific)
+      - strings with invisible unicode (ZWSP, NEL, BOM, NBSP, etc.)
+      - trailing junk that can be reduced to digits (e.g. "277703108abc")
 
-    Returns int, or None if the value cannot be interpreted as an integer.
+    Returns int, or None if not parseable as an integer.
     """
     if value is None:
         return None
@@ -126,44 +138,47 @@ def normalize_roll(value):
     if isinstance(value, float) and pd.isna(value):
         return None
 
-    # Already numeric
     if isinstance(value, int):
         return value
     if isinstance(value, float):
-        if value.is_integer():
-            return int(value)
-        return None
+        return int(value) if value.is_integer() else None
 
-    # String: strip invisible chars, apostrophes, whitespace
     s = str(value)
-    s = (s.replace("\u200b", "")
-          .replace("\ufeff", "")
-          .replace("\xa0", " "))
+    for ch in _INVISIBLE:
+        s = s.replace(ch, "")
     s = s.strip().strip("'\"`‘’“”").strip()
     if s == "":
         return None
 
+    # Strip thousands separators and any internal spaces
+    s = s.replace(",", "").replace(" ", "")
+
     try:
-        # Try int first
         return int(s)
     except ValueError:
         pass
 
-    # Try float (e.g. "202830101.0")
     try:
-        f = float(s.replace(",", ""))
-        if f.is_integer():
-            return int(f)
-        return None
+        f = float(s)
+        return int(f) if f.is_integer() else None
     except ValueError:
-        return None
+        pass
+
+    # Last resort: extract digits only
+    digits = re.sub(r"\D", "", s)
+    if digits:
+        try:
+            return int(digits)
+        except ValueError:
+            return None
+    return None
 
 
 _PCT_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
 def format_percent(raw) -> str:
-    """Return whole-number percentage string, or '—' for empty."""
+    """Whole-number percentage string, or '—' for empty/non-numeric."""
     if raw is None:
         return "—"
     if isinstance(raw, float) and pd.isna(raw):
@@ -177,7 +192,10 @@ def format_percent(raw) -> str:
             return f"{round(val * 100)}%"
         return f"{round(val)}%"
 
-    s = str(raw).replace("\xa0", " ").replace("\u200b", "").strip()
+    s = str(raw)
+    for ch in _INVISIBLE:
+        s = s.replace(ch, "")
+    s = s.strip()
     if s == "":
         return "—"
 
@@ -215,13 +233,11 @@ def _mtime() -> float:
 def log_activity(email: str, activity) -> None:
     """
     Append a row to FacultyStaffList starting at row 301.
-
-    Column layout (1-based Excel columns):
         B = Serial (int)
-        C = EmailID (text, prefixed with ' to force text)
-        D = DateTime (text: "19 Oct 2026 21:14:51")
-        E = Activity — either a string ("Authenticated",
-                       "Authentication Failed") OR an INT roll number.
+        C = 'email (text, apostrophe-prefixed)
+        D = "dd Mmm YYYY HH:MM:SS"
+        E = Activity — string ("Authenticated"/"Authentication Failed") or
+                       int (roll number) written as a NUMBER.
     """
     try:
         wb = load_workbook(str(EXCEL_FILE))
@@ -250,27 +266,24 @@ def log_activity(email: str, activity) -> None:
 
         timestamp = datetime.now().strftime("%d %b %Y %H:%M:%S")
 
-        # If activity is an int roll number, write as int. Otherwise as text.
         if isinstance(activity, int) and not isinstance(activity, bool):
-            activity_value = activity
-            activity_number_format = "0"      # integer format
+            activity_value   = activity
+            activity_format  = "0"
         else:
-            activity_value = str(activity)
-            activity_number_format = "@"      # text format
+            activity_value   = str(activity)
+            activity_format  = "@"
 
         ws.cell(row=new_row, column=LOG_COL_SERIAL,   value=next_serial)
         ws.cell(row=new_row, column=LOG_COL_EMAIL,    value=f"'{email}")
         ws.cell(row=new_row, column=LOG_COL_DATETIME, value=timestamp)
 
-        cell_activity = ws.cell(row=new_row, column=LOG_COL_ACTIVITY,
-                                value=activity_value)
-        cell_activity.number_format = activity_number_format
-        cell_activity.alignment = Alignment(horizontal="left")
+        c_act = ws.cell(row=new_row, column=LOG_COL_ACTIVITY,
+                        value=activity_value)
+        c_act.number_format = activity_format
+        c_act.alignment = Alignment(horizontal="left")
 
-        ws.cell(row=new_row, column=LOG_COL_EMAIL).alignment = \
-            Alignment(horizontal="left")
-        ws.cell(row=new_row, column=LOG_COL_DATETIME).alignment = \
-            Alignment(horizontal="left")
+        ws.cell(row=new_row, column=LOG_COL_EMAIL).alignment    = Alignment(horizontal="left")
+        ws.cell(row=new_row, column=LOG_COL_DATETIME).alignment = Alignment(horizontal="left")
 
         wb.save(str(EXCEL_FILE))
     except Exception:
@@ -278,7 +291,7 @@ def log_activity(email: str, activity) -> None:
 
 
 # ============================================================
-# EXCEL READERS
+# EXCEL READERS  (cached; invalidated when file mtime changes)
 # ============================================================
 @st.cache_data(show_spinner=False)
 def sheet_names(_m: float) -> list[str]:
@@ -330,6 +343,7 @@ def accepted_emails(_m: float) -> set[str]:
             if "@" in n:
                 emails.add(n)
 
+    # Safety net: any column mostly filled with emails
     for c in range(raw.shape[1]):
         col_vals = raw.iloc[:, c].dropna().astype(str)
         if len(col_vals) == 0:
@@ -411,24 +425,30 @@ def safe_str(df: pd.DataFrame, row_idx: int, col_letter: str) -> str:
 
 def find_roll_row(df: pd.DataFrame, roll: int):
     """
-    Find the row where column A (as an int) matches `roll` (also int).
-    Rolls stored in the sheet as "'202830101" or "202830101.0" are correctly
-    converted to int for the comparison.
+    Find the row where a cell in columns A..D matches `roll` as an integer.
+    Primary match on column A; fallback tries B, C, D in case the sheet has
+    an extra leading column. Robust against text/float/apostrophe/invisible
+    characters via normalize_roll().
     """
-    i = col_letter_to_index(ROLL_COL)
-    if i >= len(df.columns):
-        return None
-
-    rolls_int = df.iloc[:, i].map(normalize_roll)
-    hits = rolls_int[rolls_int == roll]
-    return hits.index[0] if len(hits) else None
+    target = int(roll)
+    for col_letter in ("A", "B", "C", "D"):
+        i = col_letter_to_index(col_letter)
+        if i >= len(df.columns):
+            continue
+        rolls_int = df.iloc[:, i].map(normalize_roll)
+        hits = rolls_int[rolls_int == target]
+        if len(hits):
+            return hits.index[0]
+    return None
 
 
 def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
-    # Display the roll number as an integer string (no .0 suffix, no apostrophe)
     raw_roll = raw_cell(df, row_idx, ROLL_COL)
     roll_int = normalize_roll(raw_roll)
-    roll_display = str(roll_int) if roll_int is not None else safe_str(df, row_idx, ROLL_COL)
+    roll_display = (
+        str(roll_int) if roll_int is not None
+        else safe_str(df, row_idx, ROLL_COL)
+    )
 
     return {
         "roll":       roll_display,
@@ -555,24 +575,24 @@ if st.session_state.auth:
     st.header("Step 2 — Enter Student Roll Number")
 
     with st.form("roll_form"):
-        # Show as a numeric field (no letters accepted)
-        roll_in = st.number_input(
-            "Roll number",
-            min_value=0,
-            step=1,
-            value=int(st.session_state.roll) if st.session_state.roll else 0,
-            format="%d",
+        roll_raw = st.text_input(
+            "Roll number (digits only)",
+            value=str(st.session_state.roll) if st.session_state.roll else "",
+            placeholder="e.g. 277703108",
         )
         search = st.form_submit_button("Search Results")
 
     if search:
-        roll = int(roll_in)
-        if roll <= 0:
-            st.error("❌ Please enter a valid roll number.")
+        roll = normalize_roll(roll_raw)
+        if roll is None or roll <= 0:
+            st.error(
+                f"❌ `{roll_raw.strip()}` is not a valid roll number. "
+                "Please enter digits only."
+            )
         else:
             st.session_state.roll = roll
 
-            # Log the search as a numeric activity
+            # Record the search as a NUMBER in the log
             log_activity(st.session_state.email, roll)
 
             existing = set(sheet_names(CURRENT_MTIME))
