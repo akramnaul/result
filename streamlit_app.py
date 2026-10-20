@@ -356,9 +356,11 @@ def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
 # ============================================================
 # UI
 # ============================================================
-st.set_page_config(page_title="Student Result Portal", page_icon="🎓", layout="wide")
-st.title("🎓 Student Monthly Result Portal")
-st.caption("Authenticate, then enter a roll number to view all monthly results.")
+st.set_page_config(page_title="FCC Result Portal", page_icon="🎓", layout="wide")
+st.title("🎓 Forman Christian College, Lahore")
+st.title("🎓 FCC Assessment & Examination Portal")
+st.subtitle("🎓 Facilitation Portal for Faculty, Staff, Students and Parents")
+st.caption("Authenticate, then enter a roll number to view his attendance and all monthly test results.")
 
 if not EXCEL_FILE.exists():
     st.error(f"❌ Excel file `{EXCEL_FILE.name}` not found in `{SCRIPT_DIR}`")
@@ -490,9 +492,9 @@ if st.session_state.auth:
                     st.error(f"❌ Roll `{roll}` was not found in any result sheet.")
 
     # --- Diagnostic panel (always available) ---
-    if st.session_state.search_diag:
-        with st.expander("🔍 Search diagnostic", expanded=True):
-            st.code("\n".join(st.session_state.search_diag))
+#    if st.session_state.search_diag:
+#        with st.expander("🔍 Search diagnostic", expanded=True):
+#            st.code("\n".join(st.session_state.search_diag))
 
     # ============================================================
     # STEP 3 — DISPLAY
