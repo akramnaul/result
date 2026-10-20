@@ -358,8 +358,8 @@ def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
 # ============================================================
 st.set_page_config(page_title="FCC Result Portal", page_icon="🎓", layout="wide")
 st.title("🎓 Forman Christian College, Lahore")
-st.title("🎓 FCC Assessment & Examination Portal")
-st.title("🎓 Facilitation Portal for Faculty, Staff, Students and Parents")
+st.title("Assessment & Examination Office")
+st.caption("Facilitation Portal for Faculty, Staff, Students and Parents")
 st.caption("Authenticate, then enter a roll number to view his attendance and all monthly test results.")
 
 if not EXCEL_FILE.exists():
