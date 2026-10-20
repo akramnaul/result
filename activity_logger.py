@@ -1,110 +1,87 @@
 # activity_logger.py
-"""
-Activity logger for the FCC Result Portal.
-
-Writes authentication and search events to a Google Sheet named
-'PortalActivity'. Fails gracefully (visible warning, no crash) if the
-Google credentials are missing or the sheet is unreachable.
-"""
-
 from datetime import datetime
-
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
-# ------------------------------------------------------------------
-# CONFIG
-# ------------------------------------------------------------------
-SHEET_NAME = "PortalActivity"          # Google Sheets file name
-WORKSHEET  = "Sheet1"                  # tab name inside that file
+SHEET_NAME = "PortalActivity"
+WORKSHEET = "Sheet1"
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
-
 HEADERS = ["Email", "Timestamp", "Activity"]
 
-
-# ------------------------------------------------------------------
-# Internal: cached gspread Worksheet
-# ------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def _get_sheet():
-    """
-    Return the gspread Worksheet, or None if credentials are absent
-    or authentication fails. Cached once per Streamlit session.
-    """
+    """Return (worksheet, error). Surface the real reason on failure."""
+    if "gcp_service_account" not in st.secrets:
+        return None, "Secrets block [gcp_service_account] not found."
     try:
-        creds = Credentials.from_service_account_info(
-            dict(st.secrets["gcp_service_account"]),
-            scopes=SCOPES,
-        )
+        creds_dict = dict(st.secrets["gcp_service_account"])
+    except Exception as e:
+        return None, f"Cannot read secrets: {e}"
+
+    # Check required fields
+    for field in ("client_email", "private_key", "token_uri"):
+        if not creds_dict.get(field):
+            return None, f"Secrets missing required field: {field}"
+
+    # Fix private key newlines if pasted with escaped \n
+    pk = creds_dict["private_key"]
+    if "\\n" in pk:
+        creds_dict["private_key"] = pk.replace("\\n", "\n")
+
+    try:
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    except Exception as e:
+        return None, f"Credentials failed: {e}"
+
+    try:
         client = gspread.authorize(creds)
-        # Try the named worksheet first, fall back to the first sheet
-        try:
-            return client.open(SHEET_NAME).worksheet(WORKSHEET)
-        except gspread.WorksheetNotFound:
-            return client.open(SHEET_NAME).sheet1
-    except KeyError:
-        return None          # [gcp_service_account] block missing from secrets
-    except Exception:
-        return None
+    except Exception as e:
+        return None, f"gspread authorize failed: {e}"
 
-
-def _ensure_headers(sheet) -> None:
-    """Ensure row 1 contains the expected column headers."""
     try:
-        first_row = sheet.row_values(1)
-        if not first_row or len(first_row) < len(HEADERS):
+        sh = client.open(SHEET_NAME)
+    except gspread.SpreadsheetNotFound:
+        return None, (
+            f"Sheet '{SHEET_NAME}' not found. Check name and share it with "
+            f"{creds_dict['client_email']} as Editor."
+        )
+    except Exception as e:
+        return None, f"client.open failed: {e}"
+
+    try:
+        ws = sh.worksheet(WORKSHEET)
+    except gspread.WorksheetNotFound:
+        ws = sh.sheet1
+    except Exception as e:
+        return None, f"Opening worksheet failed: {e}"
+    return ws, None
+
+def _ensure_headers(sheet):
+    try:
+        first = sheet.row_values(1)
+        if not first or len(first) < len(HEADERS):
             sheet.update("A1:C1", [HEADERS])
     except Exception:
         pass
 
-
-# ------------------------------------------------------------------
-# Public API
-# ------------------------------------------------------------------
-def log_activity(email: str, activity) -> None:
-    """
-    Append one row to the PortalActivity Google Sheet.
-
-    Args:
-        email:    faculty email (string)
-        activity: 'Authenticated' / 'Authentication Failed' (string),
-                  or a roll number (int) for search events.
-
-    Never raises. Failures are surfaced via st.warning().
-    """
-    sheet = _get_sheet()
+def log_activity(email: str, activity):
+    sheet, err = _get_sheet()
     if sheet is None:
+        st.warning(f"⚠️ Log skipped: {err}")
         return
-
     try:
         _ensure_headers(sheet)
-
-        timestamp = datetime.now().strftime("%d %b %Y %H:%M:%S")
-
-        if isinstance(activity, int) and not isinstance(activity, bool):
-            activity_cell = activity
-        else:
-            activity_cell = str(activity)
-
-        sheet.append_row(
-            [email, timestamp, activity_cell],
-            value_input_option="USER_ENTERED",
-        )
+        ts = datetime.now().strftime("%d %b %Y %H:%M:%S")
+        val = activity if isinstance(activity, int) else str(activity)
+        sheet.append_row([email, ts, val], value_input_option="USER_ENTERED")
+        st.toast(f"📝 Logged: {activity}", icon="✅")
     except Exception as e:
-        st.warning(f"⚠️ Log not saved to Google Sheets: {type(e).__name__}: {e}")
+        st.warning(f"⚠️ Append failed: {e}")
 
-
-def log_auth_success(email: str) -> None:
-    log_activity(email, "Authenticated")
-
-
-def log_auth_failure(email: str) -> None:
-    log_activity(email, "Authentication Failed")
-
-
-def log_search(email: str, roll: int) -> None:
-    log_activity(email, int(roll))
+def log_auth_success(email: str): log_activity(email, "Authenticated")
+def log_auth_failure(email: str): log_activity(email, "Authentication Failed")
+def log_search(email: str, roll: int): log_activity(email, int(roll))
