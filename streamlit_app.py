@@ -360,7 +360,7 @@ st.set_page_config(page_title="FCC Result Portal", page_icon="🎓", layout="wid
 st.title("🎓 Forman Christian College, Lahore")
 st.title("Assessment & Examination Office")
 st.caption("Facilitation Portal for Faculty, Staff, Students and Parents")
-st.caption("Authenticate, then enter a roll number to view his attendance and all monthly test results.")
+st.caption("Authenticate, then enter a roll number to view his overall attendance and all tests' results.")
 
 if not EXCEL_FILE.exists():
     st.error(f"❌ Excel file `{EXCEL_FILE.name}` not found in `{SCRIPT_DIR}`")
@@ -511,7 +511,7 @@ if st.session_state.auth:
                 st.subheader(f"🗓️ {rec['label']}  ({rec['sheet']})")
                 c_left, c_right = st.columns(2)
                 with c_left:
-                    st.markdown(f"{rec['roll']} : {rec['name']} : Overall Attendance : {rec['attendance']}")
+                    st.markdown(f"{rec['roll']} : {rec['name']} : **Overall Attendance** : {rec['attendance']}")
 #                    st.markdown(f"**Roll No:** {rec['roll']}")
 #                    st.markdown(f"**Name:** {rec['name']}")
 #                st.markdown(f"**Attendance:** {rec['attendance']}")
