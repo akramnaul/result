@@ -511,9 +511,10 @@ if st.session_state.auth:
                 st.subheader(f"🗓️ {rec['label']}  ({rec['sheet']})")
                 c_left, c_right = st.columns(2)
                 with c_left:
-                    st.markdown(f"**Roll No:** {rec['roll']}")
-                    st.markdown(f"**Name:** {rec['name']}")
-                st.markdown(f"**Attendance:** {rec['attendance']}")
+                    st.markdown(f"{rec['roll']} : {rec['name']} : Overall Attendance : {rec['attendance']}")
+#                    st.markdown(f"**Roll No:** {rec['roll']}")
+#                    st.markdown(f"**Name:** {rec['name']}")
+#                st.markdown(f"**Attendance:** {rec['attendance']}")
                 st.markdown("---")
                 st.markdown("**Subjects & Marks (%):**")
 
