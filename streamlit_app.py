@@ -365,7 +365,7 @@ def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
 # UI
 # ============================================================
 st.set_page_config(page_title="FCC Result Portal", page_icon="🎓", layout="wide")
-hide.sidebar()
+hide_sidebar()
 st.title("🎓 Forman Christian College, Lahore")
 st.title("Assessment & Examination Office")
 st.caption("Facilitation Portal for Faculty, Staff, Students and Parents.")
