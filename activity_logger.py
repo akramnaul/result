@@ -16,8 +16,8 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
-SPREADSHEET_NAME = "PortalActivity"  # Google Sheets file name
-LOG_TAB          = "Activity"        # tab that holds the log
+SPREADSHEET_NAME = "Activity"    # Google Sheets file name
+LOG_TAB          = "Activity"    # tab that holds the log
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
