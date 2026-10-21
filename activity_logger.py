@@ -110,8 +110,9 @@ def log_activity(email: str, activity) -> None:
         ts = datetime.now().strftime("%d %b %Y %H:%M:%S")
         val = activity if isinstance(activity, int) else str(activity)
         sheet.append_row(
-            [serial, email, ts, val],
+            [serial, email, ts, val], 
             value_input_option="USER_ENTERED",
+            table_range='A1:D10000'  # 👈 Add this line
         )
         st.toast(f"📝 Logged #{serial}: {activity}", icon="✅")
     except Exception as e:
