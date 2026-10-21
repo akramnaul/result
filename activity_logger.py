@@ -17,7 +17,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "PortalActivity"     # Google Sheets file name
-LOG_TAB          = "PortalLog"          # tab that holds the log
+LOG_TAB          = "PortalActivity"          # tab that holds the log
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
