@@ -467,7 +467,7 @@ if st.session_state.auth:
             "Roll number",
             key="roll_input",
 #            value=str(st.session_state.roll) if st.session_state.roll else "",
-            placeholder="e.g. 202830101",
+            placeholder="202830101",
         )
         search = st.form_submit_button("Search Results")
 
