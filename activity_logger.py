@@ -4,7 +4,7 @@ Appends authentication and search events to the 'PortalActivity' Google Sheet.
 
 Log tab layout (row 1 = headers, row 2+ = data):
     A = Serial (auto-increments from the highest existing value)
-    B = Email
+    B = EMail
     C = Timestamp
     D = Activity ('Authenticated' / 'Authentication Failed' / roll number)
 """
@@ -16,13 +16,13 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
-SPREADSHEET_NAME = "PortalActivity"    # Google Sheets file name
+SPREADSHEET_NAME = "PortalActivity"  # Google Sheets file name
 LOG_TAB          = "Activity"        # tab that holds the log
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
 ]
-HEADERS = ["Serial", "Email", "Timestamp", "Activity"]
+HEADERS = ["Serial", "EMail", "Timestamp", "Activity"]
 
 
 @st.cache_resource(show_spinner=False)
@@ -37,9 +37,9 @@ def _get_log_sheet():
             if "\\n" in pk:
                 creds_dict["private_key"] = pk.replace("\\n", "\n")
         else:
-            return None, "No Google credentials in Secrets."
+            return None, "No Google Credentials in Secrets."
     except Exception as e:
-        return None, f"Cannot parse secrets: {e}"
+        return None, f"Cannot Parse Secrets: {e}"
 
     for field in ("client_email", "private_key", "token_uri"):
         if not creds_dict.get(field):
@@ -48,17 +48,15 @@ def _get_log_sheet():
     try:
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     except Exception as e:
-        return None, f"Credentials failed: {e}"
+        return None, f"Credentials Failed: {e}"
 
     try:
         client = gspread.authorize(creds)
         sh = client.open(SPREADSHEET_NAME)
     except gspread.SpreadsheetNotFound:
-        return None, (
-            f"Spreadsheet '{SPREADSHEET_NAME}' NOT FOUND. Share it with {creds_dict['client_email']} as Editor."
-        )
+        return None, (f"Spreadsheet '{SPREADSHEET_NAME}' NOT FOUND. Share it with {creds_dict['client_email']} as Editor.")
     except Exception as e:
-        return None, f"client.open failed: {e}"
+        return None, f"client.open Failed: {e}"
 
     try:
         try:
@@ -101,7 +99,7 @@ def _next_serial(sheet) -> int:
 def log_activity(email: str, activity) -> None:
     sheet, err = _get_log_sheet()
     if sheet is None:
-        st.warning(f"⚠️ Log skipped: {err}")
+        st.warning(f"⚠️ Log Skipped: {err}")
         return
 
     try:
