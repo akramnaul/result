@@ -1,18 +1,17 @@
 # streamlit_app.py
 """
-FCC Assessment & Examination Portal — Student Monthly Result Viewer.
-
-Reads result.xlsx (which must live beside this file) and displays all
-monthly results for a given roll number after faculty authentication.
-All authentication and search events are logged to the 'PortalActivity'
-Google Sheet via activity_logger.py.
+FCC Result Portal — reads data from the 'PortalActivity' Google Sheet
+(tabs: FacultyStaffList, 26-09, 26-10, …) and writes activity logs
+back into the same spreadsheet.
 """
 
+import json
 import re
-from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
 
 from activity_logger import (
     log_auth_success,
@@ -23,25 +22,16 @@ from activity_logger import (
 # ============================================================
 # CONFIG
 # ============================================================
-SCRIPT_DIR = Path(__file__).resolve().parent
-EXCEL_FILE = SCRIPT_DIR / "result.xlsx"
+SPREADSHEET_NAME = "PortalActivity"
 
-AUTH_SHEET        = "FacultyStaffList"
+AUTH_TAB = "FacultyStaffList"
 AUTH_EMAIL_COLUMN = "G"
 
-RESULT_SHEETS = [
-    "Result-26-09", "Result-26-10", "Result-26-11", "Result-26-12",
-    "Result-27-01", "Result-27-02", "Result-27-03", "Result-27-04",
-    "Result-27-05", "Result-27-06", "Result-27-07", "Result-27-08",
-]
-
-SHEET_LABELS = {
-    "Result-26-09": "September 2026", "Result-26-10": "October 2026",
-    "Result-26-11": "November 2026",  "Result-26-12": "December 2026",
-    "Result-27-01": "January 2027",   "Result-27-02": "February 2027",
-    "Result-27-03": "March 2027",     "Result-27-04": "April 2027",
-    "Result-27-05": "May 2027",       "Result-27-06": "June 2027",
-    "Result-27-07": "July 2027",      "Result-27-08": "August 2027",
+RESULT_TABS = ["26-09", "26-10"]        # add "26-11", "26-12", … as they appear
+TAB_LABELS = {
+    "26-09": "September 2026",
+    "26-10": "October 2026",
+    # "26-11": "November 2026",
 }
 
 ROLL_COL       = "A"
@@ -51,6 +41,8 @@ SUBJECT_COLS   = ["D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
 
 MAX_SECTION_LOOKBACK     = 50
 MIN_HEADER_SUBJECT_CELLS = 3
+
+CACHE_TTL_SECONDS = 60
 
 _INVISIBLE = (
     "\u200b", "\u200c", "\u200d", "\u2060", "\ufeff",
@@ -70,47 +62,32 @@ def col_letter_to_index(letter: str) -> int:
 
 
 def normalize(value) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, float) and pd.isna(value):
-        return ""
+    if value is None: return ""
+    if isinstance(value, float) and pd.isna(value): return ""
     s = str(value)
-    for ch in _INVISIBLE:
-        s = s.replace(ch, "")
+    for ch in _INVISIBLE: s = s.replace(ch, "")
     s = s.strip().strip("'\"`‘’“”").strip()
     return s.lower()
 
 
 def normalize_roll(value):
-    """Convert any roll representation into a Python int, or None."""
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, float) and pd.isna(value):
-        return None
-    if isinstance(value, int):
-        return value
+    if value is None: return None
+    if isinstance(value, bool): return None
+    if isinstance(value, float) and pd.isna(value): return None
+    if isinstance(value, int): return value
     if isinstance(value, float):
         return int(value) if value.is_integer() else None
-
     s = str(value)
-    for ch in _INVISIBLE:
-        s = s.replace(ch, "")
+    for ch in _INVISIBLE: s = s.replace(ch, "")
     s = s.strip().strip("'\"`‘’“”").strip()
-    if not s:
-        return None
-
+    if not s: return None
     s_clean = s.replace(",", "").replace(" ", "")
-    try:
-        return int(s_clean)
-    except ValueError:
-        pass
+    try: return int(s_clean)
+    except ValueError: pass
     try:
         f = float(s_clean)
         return int(f) if f.is_integer() else None
-    except ValueError:
-        pass
+    except ValueError: pass
     digits = re.sub(r"\D", "", s)
     return int(digits) if digits else None
 
@@ -119,107 +96,127 @@ _PCT_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
 def format_percent(raw) -> str:
-    if raw is None:
-        return "—"
-    if isinstance(raw, float) and pd.isna(raw):
-        return "—"
-
+    if raw is None: return "—"
+    if isinstance(raw, float) and pd.isna(raw): return "—"
     if isinstance(raw, (int, float)) and not isinstance(raw, bool):
         val = float(raw)
-        if val == 1.0:
-            return "100%"
-        if 0.0 < val < 1.0:
-            return f"{round(val * 100)}%"
+        if val == 1.0: return "100%"
+        if 0.0 < val < 1.0: return f"{round(val * 100)}%"
         return f"{round(val)}%"
-
     s = str(raw)
-    for ch in _INVISIBLE:
-        s = s.replace(ch, "")
+    for ch in _INVISIBLE: s = s.replace(ch, "")
     s = s.strip()
-    if not s:
-        return "—"
-
+    if not s: return "—"
     if "%" in s:
         m = _PCT_RE.search(s.replace(",", ""))
-        if not m:
-            return "—"
-        try:
-            return f"{round(float(m.group(0)))}%"
-        except ValueError:
-            return "—"
-
-    try:
-        val = float(s.replace(",", ""))
-    except ValueError:
-        return s
-
-    if val == 1.0:
-        return "100%"
-    if 0.0 < val < 1.0:
-        return f"{round(val * 100)}%"
+        if not m: return "—"
+        try: return f"{round(float(m.group(0)))}%"
+        except ValueError: return "—"
+    try: val = float(s.replace(",", ""))
+    except ValueError: return s
+    if val == 1.0: return "100%"
+    if 0.0 < val < 1.0: return f"{round(val * 100)}%"
     return f"{round(val)}%"
 
 
-def _mtime() -> float:
+# ============================================================
+# GOOGLE SHEETS CLIENT
+# ============================================================
+@st.cache_resource(show_spinner=False)
+def _gsheet_client():
     try:
-        return EXCEL_FILE.stat().st_mtime
-    except OSError:
-        return 0.0
+        if "gcp_service_account_json" in st.secrets:
+            creds_dict = json.loads(st.secrets["gcp_service_account_json"])
+        elif "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            pk = creds_dict.get("private_key", "")
+            if "\\n" in pk:
+                creds_dict["private_key"] = pk.replace("\\n", "\n")
+        else:
+            return None, "No Google credentials in Secrets."
+        creds = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
+        )
+        return gspread.authorize(creds), None
+    except Exception as e:
+        return None, f"{type(e).__name__}: {e}"
 
 
-# ============================================================
-# EXCEL READERS
-# ============================================================
-@st.cache_data(show_spinner=False)
-def sheet_names(_m: float) -> list[str]:
+@st.cache_resource(show_spinner=False)
+def _open_spreadsheet():
+    client, err = _gsheet_client()
+    if client is None:
+        return None, err
     try:
-        return pd.ExcelFile(str(EXCEL_FILE)).sheet_names
+        return client.open(SPREADSHEET_NAME), None
+    except gspread.SpreadsheetNotFound:
+        return None, (
+            f"Spreadsheet '{SPREADSHEET_NAME}' not found. Share it with the "
+            f"service account as Editor."
+        )
+    except Exception as e:
+        return None, f"client.open failed: {type(e).__name__}: {e}"
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def load_tab_as_df(tab_name: str):
+    sh, _ = _open_spreadsheet()
+    if sh is None:
+        return None
+    try:
+        ws = sh.worksheet(tab_name)
+    except gspread.WorksheetNotFound:
+        return None
+    except Exception:
+        return None
+    try:
+        values = ws.get_all_values()
+    except Exception:
+        return None
+    if not values:
+        return pd.DataFrame()
+    header, *rows = values
+    width = len(header)
+    norm_rows = [r + [""] * (width - len(r)) for r in rows]
+    df = pd.DataFrame(norm_rows, columns=header)
+    df.columns = [str(c).strip() for c in df.columns]
+    return df.replace("", pd.NA)
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def available_tabs() -> list[str]:
+    sh, _ = _open_spreadsheet()
+    if sh is None:
+        return []
+    try:
+        return [w.title for w in sh.worksheets()]
     except Exception:
         return []
-
-
-@st.cache_data(show_spinner=False)
-def read_sheet(sheet_name: str, _m: float):
-    try:
-        xls = pd.ExcelFile(str(EXCEL_FILE))
-        if sheet_name not in xls.sheet_names:
-            return None
-        df = pd.read_excel(str(EXCEL_FILE), sheet_name=sheet_name,
-                           header=0, dtype=object)
-        df.columns = [str(c).strip() for c in df.columns]
-        return df
-    except Exception:
-        return None
-
-
-@st.cache_data(show_spinner=False)
-def read_sheet_raw(sheet_name: str, _m: float):
-    try:
-        return pd.read_excel(str(EXCEL_FILE), sheet_name=sheet_name,
-                             header=None, dtype=object)
-    except Exception:
-        return None
 
 
 # ============================================================
 # AUTHENTICATION
 # ============================================================
-@st.cache_data(show_spinner=False)
-def accepted_emails(_m: float) -> set[str]:
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def accepted_emails() -> set[str]:
+    df = load_tab_as_df(AUTH_TAB)
+    if df is None or df.empty:
+        return set()
     emails: set[str] = set()
-    raw = read_sheet_raw(AUTH_SHEET, _m)
-    if raw is None:
-        return emails
 
     g_idx = col_letter_to_index(AUTH_EMAIL_COLUMN)
-    if g_idx < raw.shape[1]:
-        for v in raw.iloc[:, g_idx].dropna():
+    if g_idx < len(df.columns):
+        for v in df.iloc[:, g_idx].dropna():
             n = normalize(v)
             if "@" in n:
                 emails.add(n)
 
-    for c in range(raw.shape[1]):
-        col_vals = raw.iloc[:, c].dropna().astype(str)
+    for j in range(df.shape[1]):
+        col_vals = df.iloc[:, j].dropna().astype(str)
         if len(col_vals) == 0:
             continue
         hits = sum(1 for v in col_vals if "@" in v)
@@ -235,7 +232,6 @@ def accepted_emails(_m: float) -> set[str]:
 # ROLL LOOKUP
 # ============================================================
 def find_roll_row(df: pd.DataFrame, roll: int):
-    """Search every column of df for the roll as an int."""
     target = int(roll)
     for j in range(df.shape[1]):
         parsed = df.iloc[:, j].map(normalize_roll)
@@ -245,30 +241,10 @@ def find_roll_row(df: pd.DataFrame, roll: int):
     return None
 
 
-def find_roll_row_raw(sheet_name: str, roll: int, _m: float):
-    """Fallback search on the raw (header=None) sheet."""
-    target = int(roll)
-    raw = read_sheet_raw(sheet_name, _m)
-    if raw is None:
-        return (None, None)
-
-    for j in range(raw.shape[1]):
-        parsed = raw.iloc[:, j].map(normalize_roll)
-        hits = parsed[parsed == target]
-        if len(hits):
-            raw_row = hits.index[0]
-            header_df_row = raw_row - 1
-            if header_df_row >= 0:
-                return (raw_row, header_df_row)
-            return (raw_row, None)
-    return (None, None)
-
-
 # ============================================================
-# SUBJECT NAME LOOKUP
+# SUBJECT NAME (section header)
 # ============================================================
-def find_section_header_row(df: pd.DataFrame, student_row: int,
-                             roll_col_idx: int = 0):
+def find_section_header_row(df, student_row, roll_col_idx=0):
     if roll_col_idx >= len(df.columns):
         return None
     subject_idx = [j for j in range(len(df.columns)) if j >= roll_col_idx + 3]
@@ -286,14 +262,13 @@ def find_section_header_row(df: pd.DataFrame, student_row: int,
     return None
 
 
-def subject_name_for_section(df: pd.DataFrame, student_row: int,
-                              roll_col_idx: int, subject_col_idx: int) -> str:
+def subject_name_for_section(df, student_row, roll_col_idx, subject_col_idx) -> str:
     if subject_col_idx >= len(df.columns):
         return "NotUploaded"
-    header_row = find_section_header_row(df, student_row, roll_col_idx)
-    if header_row is None:
+    hdr = find_section_header_row(df, student_row, roll_col_idx)
+    if hdr is None:
         return "NotUploaded"
-    v = df.iloc[header_row, subject_col_idx]
+    v = df.iloc[hdr, subject_col_idx]
     if pd.isna(v):
         return "NotUploaded"
     s = str(v).strip()
@@ -323,7 +298,6 @@ def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
         str(roll_int) if roll_int is not None
         else safe_str_cell(df, row_idx, 0)
     )
-
     subjects = []
     for j in range(3, min(13, df.shape[1])):
         subjects.append({
@@ -334,16 +308,15 @@ def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
         })
     while len(subjects) < 10:
         subjects.append({"subject": "NotUploaded", "mark": "—"})
-
     return {
-        "roll": roll_display,
-        "name": safe_str_cell(df, row_idx, 1),
+        "roll":       roll_display,
+        "name":       safe_str_cell(df, row_idx, 1),
         "attendance": format_percent(
             df.iloc[row_idx, 2]
             if df.shape[1] > 2 and not pd.isna(df.iloc[row_idx, 2])
             else None
         ),
-        "subjects": subjects,
+        "subjects":   subjects,
     }
 
 
@@ -359,28 +332,24 @@ st.caption(
     "and all tests' results."
 )
 
-if not EXCEL_FILE.exists():
-    st.error(f"❌ Excel file `{EXCEL_FILE.name}` not found in `{SCRIPT_DIR}`")
-    st.code(sorted(p.name for p in SCRIPT_DIR.iterdir()))
+# Startup: verify spreadsheet reachable
+_sh, _err = _open_spreadsheet()
+if _sh is None:
+    st.error(f"❌ Cannot open spreadsheet `{SPREADSHEET_NAME}`: {_err}")
     st.stop()
-
-CURRENT_MTIME = _mtime()
 
 st.session_state.setdefault("auth", False)
 st.session_state.setdefault("email", "")
 st.session_state.setdefault("roll", None)
 st.session_state.setdefault("results", [])
-st.session_state.setdefault("search_diag", [])
 
 with st.sidebar:
-    st.caption("Workbook")
-    st.write(f"`{EXCEL_FILE.name}`")
-    try:
-        st.write(f"{EXCEL_FILE.stat().st_size / 1024:.1f} KB")
-    except OSError:
-        pass
-    st.write(f"Sheets: **{len(sheet_names(CURRENT_MTIME))}**")
-    st.write(f"Emails: **{len(accepted_emails(CURRENT_MTIME))}**")
+    st.caption("Source: Google Sheet")
+    st.write(f"`{SPREADSHEET_NAME}`")
+    tabs = available_tabs()
+    st.write(f"Tabs: **{len(tabs)}**")
+    st.caption(", ".join(tabs[:10]) + (" …" if len(tabs) > 10 else ""))
+    st.write(f"Emails: **{len(accepted_emails())}**")
 
 # ============================================================
 # STEP 1 — AUTH
@@ -399,7 +368,7 @@ if not st.session_state.auth:
         if not target:
             st.error("❌ Please enter an email.")
         else:
-            accepted = accepted_emails(CURRENT_MTIME)
+            accepted = accepted_emails()
             if target in accepted:
                 log_auth_success(target)
                 st.session_state.auth = True
@@ -407,17 +376,12 @@ if not st.session_state.auth:
                 st.rerun()
             else:
                 log_auth_failure(target)
-                st.error(
-                    f"❌ `{email_in.strip()}` not in FacultyStaffList column G."
-                )
+                st.error(f"❌ `{email_in.strip()}` not found in `{AUTH_TAB}`.")
                 with st.expander("Show closest matches", expanded=True):
                     from difflib import get_close_matches
-                    ms = get_close_matches(
-                        target, list(accepted), n=5, cutoff=0.5
-                    )
+                    ms = get_close_matches(target, list(accepted), n=5, cutoff=0.5)
                     if ms:
-                        for m in ms:
-                            st.code(m)
+                        for m in ms: st.code(m)
                     else:
                         st.write("No close matches.")
 else:
@@ -427,7 +391,6 @@ else:
         st.session_state.email = ""
         st.session_state.roll = None
         st.session_state.results = []
-        st.session_state.search_diag = []
         st.rerun()
 
 # ============================================================
@@ -452,70 +415,32 @@ if st.session_state.auth:
             st.session_state.roll = roll
             log_search(st.session_state.email, roll)
 
-            existing = set(sheet_names(CURRENT_MTIME))
-            to_check = [s for s in RESULT_SHEETS if s in existing]
+            present = set(available_tabs())
+            to_check = [t for t in RESULT_TABS if t in present]
 
             if not to_check:
-                st.error("❌ No result sheets found.")
+                st.error(
+                    f"❌ None of the configured result tabs exist. "
+                    f"Expected: {RESULT_TABS}. Found: {sorted(present)}"
+                )
                 st.session_state.results = []
-                st.session_state.search_diag = []
             else:
                 found = []
-                diag = []
-                for sheet in to_check:
-                    df = read_sheet(sheet, CURRENT_MTIME)
-                    if df is None:
-                        diag.append(f"{sheet}: read failed")
+                for tab in to_check:
+                    df = load_tab_as_df(tab)
+                    if df is None or df.empty:
                         continue
-
                     row = find_roll_row(df, roll)
                     if row is None:
-                        raw_row, header_row = find_roll_row_raw(
-                            sheet, roll, CURRENT_MTIME
-                        )
-                        if header_row is not None:
-                            row = header_row
-                            diag.append(
-                                f"{sheet}: found via raw fallback at "
-                                f"raw_row={raw_row}"
-                            )
-                        elif raw_row is not None:
-                            diag.append(
-                                f"{sheet}: roll found only in header row "
-                                f"(raw_row=0)"
-                            )
-                            continue
-
-                    if row is None:
-                        col_summary = []
-                        for j in range(df.shape[1]):
-                            n = int(
-                                (df.iloc[:, j].map(normalize_roll) == roll).sum()
-                            )
-                            if n:
-                                col_summary.append(f"col{j}={n}")
-                        diag.append(
-                            f"{sheet}: no match ({df.shape}); "
-                            f"{', '.join(col_summary) or 'target absent'}"
-                        )
                         continue
-
                     rec = extract_record(df, row)
-                    rec["sheet"] = sheet
-                    rec["label"] = SHEET_LABELS.get(sheet, sheet)
+                    rec["sheet"] = tab
+                    rec["label"] = TAB_LABELS.get(tab, tab)
                     found.append(rec)
-                    diag.append(
-                        f"{sheet}: FOUND at row {row} — "
-                        f"roll={rec['roll']} name={rec['name']!r}"
-                    )
 
                 st.session_state.results = found
-                st.session_state.search_diag = diag
-
                 if not found:
-                    st.error(
-                        f"❌ Roll `{roll}` was not found in any result sheet."
-                    )
+                    st.error(f"❌ Roll `{roll}` not found in any result tab.")
 
     # ============================================================
     # STEP 3 — DISPLAY
@@ -544,15 +469,12 @@ if st.session_state.auth:
                         subj = subj[:27] + "..."
                     rows_html += (
                         f"<tr>"
-                        f"<td style='width:30ch;padding:2px 8px 2px 0;'>"
-                        f"{subj}</td>"
-                        f"<td style='padding:2px 0;font-weight:600;'>"
-                        f"{s['mark']}</td>"
+                        f"<td style='width:30ch;padding:2px 8px 2px 0;'>{subj}</td>"
+                        f"<td style='padding:2px 0;font-weight:600;'>{s['mark']}</td>"
                         f"</tr>"
                     )
                 st.markdown(
-                    f"<table style='border-collapse:collapse;'>"
-                    f"{rows_html}</table>",
+                    f"<table style='border-collapse:collapse;'>{rows_html}</table>",
                     unsafe_allow_html=True,
                 )
 
