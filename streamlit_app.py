@@ -347,13 +347,13 @@ def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
 st.set_page_config(page_title="FCC Result Portal", page_icon="🎓", layout="wide")
 st.title("🎓 Forman Christian College, Lahore")
 st.title("Assessment & Examination Office")
-st.caption("Facilitation Portal for Faculty, Staff, Students and Parents")
-st.caption("Authenticate first, then enter a roll number to view overall attendance and all tests' results.")
+st.caption("Facilitation Portal for Faculty, Staff, Students and Parents.")
+st.caption("Authenticate First, then enter a Roll Number to view overall attendance and all tests' results.")
 
-# Startup: verify spreadsheet reachable
+# Startup: Verify Spreadsheet Reachable
 _sh, _err = _open_spreadsheet()
 if _sh is None:
-    st.error(f"❌ Cannot open spreadsheet `{SPREADSHEET_NAME}`: {_err}")
+    st.error(f"❌ Cannot Open Spreadsheet `{SPREADSHEET_NAME}`: {_err}")
     st.stop()
 
 st.session_state.setdefault("auth", False)
@@ -361,13 +361,13 @@ st.session_state.setdefault("email", "")
 st.session_state.setdefault("roll", None)
 st.session_state.setdefault("results", [])
 
-with st.sidebar:
-    st.caption("Source: Google Sheet")
-    st.write(f"`{SPREADSHEET_NAME}`")
-    tabs = available_tabs()
-    st.write(f"Tabs: **{len(tabs)}**")
-    st.caption(", ".join(tabs[:10]) + (" …" if len(tabs) > 10 else ""))
-    st.write(f"Emails: **{len(accepted_emails())}**")
+#with st.sidebar:
+#    st.caption("Source: Google Sheet")
+#    st.write(f"`{SPREADSHEET_NAME}`")
+#    tabs = available_tabs()
+#    st.write(f"Tabs: **{len(tabs)}**")
+#    st.caption(", ".join(tabs[:10]) + (" …" if len(tabs) > 10 else ""))
+#    st.write(f"Emails: **{len(accepted_emails())}**")
 
 # ============================================================
 # STEP 1 — AUTH
@@ -375,7 +375,7 @@ with st.sidebar:
 st.header("Step 1 — Authenticate")
 
 if not st.session_state.auth:
-    st.markdown("**Faculty email**")
+    st.markdown("**Faculty EMail**")
     col_id, col_domain = st.columns([3, 2], vertical_alignment="bottom")
 
     with col_id:
