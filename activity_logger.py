@@ -16,8 +16,8 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
-SPREADSHEET_NAME = "PortalActivity"    # Google Sheets file name
-LOG_TAB          = "PortalActivity"    # tab that holds the log
+SPREADSHEET_NAME = "PortalActivity"  # Google Sheets file name
+LOG_TAB          = "Activity"        # tab that holds the log
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -115,7 +115,7 @@ def log_activity(email: str, activity) -> None:
         )
         st.toast(f"📝 Logged #{serial}: {activity}", icon="✅")
     except Exception as e:
-        st.warning(f"⚠️ Append failed: {e}")
+        st.warning(f"⚠️ Append Failed: {e}")
 
 
 def log_auth_success(email: str) -> None:
