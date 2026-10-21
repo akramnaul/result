@@ -375,17 +375,37 @@ with st.sidebar:
 st.header("Step 1 — Authenticate")
 
 if not st.session_state.auth:
-    with st.form("auth_form"):
-        email_in = st.text_input(
-            "Faculty email", placeholder="you@fccollege.edu.pk"
+    st.markdown("**Faculty email**")
+    col_id, col_domain = st.columns([3, 2], vertical_alignment="bottom")
+
+    with col_id:
+        user_id = st.text_input(
+            "ID",
+            key="email_id",
+            placeholder="username",
+            label_visibility="collapsed",
         )
-        submitted = st.form_submit_button("Authenticate")
+
+    with col_domain:
+        st.text_input(
+            "Domain",
+            value="@fccollege.edu.pk",
+            disabled=True,
+            key="email_domain",
+            label_visibility="collapsed",
+        )
+
+    submitted = st.button("Authenticate", type="primary")
 
     if submitted:
-        target = normalize(email_in)
-        if not target:
-            st.error("❌ Please Enter An EMail.")
+        raw_id = (user_id or "").strip()
+        if not raw_id:
+            st.error("❌ Please enter your user ID.")
         else:
+            # Build the full email with the fixed domain
+            full_email = (raw_id + "@fccollege.edu.pk").lower()
+            target = normalize(full_email)
+
             accepted = accepted_emails()
             if target in accepted:
                 log_auth_success(target)
@@ -394,12 +414,13 @@ if not st.session_state.auth:
                 st.rerun()
             else:
                 log_auth_failure(target)
-                st.error(f"❌ `{email_in.strip()}` not found in `{AUTH_TAB}`.")
+                st.error(f"❌ `{full_email}` is NOT a Registered Faculty EMail...Contact Exam Branch.")
                 with st.expander("Show Closest Matches", expanded=True):
                     from difflib import get_close_matches
                     ms = get_close_matches(target, list(accepted), n=5, cutoff=0.5)
                     if ms:
-                        for m in ms: st.code(m)
+                        for m in ms:
+                            st.code(m)
                     else:
                         st.write("No close matches.")
 else:
@@ -409,8 +430,10 @@ else:
         st.session_state.email = ""
         st.session_state.roll = None
         st.session_state.results = []
+        st.session_state.roll_input = ""
+        st.session_state.email_id = ""       # clear the ID box too
         st.rerun()
-
+        
 # ============================================================
 # STEP 2 — SEARCH
 # ============================================================
