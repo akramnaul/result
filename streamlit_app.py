@@ -419,19 +419,12 @@ else:
 # ============================================================
 if st.session_state.auth:
     st.header("Step 2 — Enter Student Roll Number")
-with st.form("roll_form"):
-    roll_raw = st.text_input(
-        "Roll number",
-        key="roll_input",
-        placeholder="e.g. 277703101",
-    )
-    search = st.form_submit_button("Search Results")
     
     with st.form("roll_form"):
         roll_raw = st.text_input(
             "Roll number",
-#            value=str(st.session_state.roll) if st.session_state.roll else "",
             key="roll_input",
+#            value=str(st.session_state.roll) if st.session_state.roll else "",
             placeholder="e.g. 277703101",
         )
         search = st.form_submit_button("Search Results")
