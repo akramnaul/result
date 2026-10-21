@@ -51,6 +51,8 @@ def _get_log_sheet():
 
     try:
         client = gspread.authorize(creds)
+        client.set_timeout(15)     # seconds — fail fast
+
         sh = client.open(SPREADSHEET_NAME)
     except gspread.SpreadsheetNotFound:
         return None, (
