@@ -16,8 +16,8 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
-SPREADSHEET_NAME = "PortalActivity"     # Google Sheets file name
-LOG_TAB          = "PortalActivity"          # tab that holds the log
+SPREADSHEET_NAME = "PortalActivity"    # Google Sheets file name
+LOG_TAB          = "PortalActivity"    # tab that holds the log
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -27,7 +27,7 @@ HEADERS = ["Serial", "Email", "Timestamp", "Activity"]
 
 @st.cache_resource(show_spinner=False)
 def _get_log_sheet():
-    """Return (worksheet, error). Surfaces real reason on failure."""
+    """Return (worksheet, error). Surfaces Real Reason on Failure."""
     try:
         if "gcp_service_account_json" in st.secrets:
             creds_dict = json.loads(st.secrets["gcp_service_account_json"])
@@ -43,7 +43,7 @@ def _get_log_sheet():
 
     for field in ("client_email", "private_key", "token_uri"):
         if not creds_dict.get(field):
-            return None, f"Secrets missing required field: {field}"
+            return None, f"Secrets Missing Required Field: {field}"
 
     try:
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
@@ -55,8 +55,7 @@ def _get_log_sheet():
         sh = client.open(SPREADSHEET_NAME)
     except gspread.SpreadsheetNotFound:
         return None, (
-            f"Spreadsheet '{SPREADSHEET_NAME}' not found. Share it with "
-            f"{creds_dict['client_email']} as Editor."
+            f"Spreadsheet '{SPREADSHEET_NAME}' NOT FOUND. Share it with {creds_dict['client_email']} as Editor."
         )
     except Exception as e:
         return None, f"client.open failed: {e}"
@@ -69,7 +68,7 @@ def _get_log_sheet():
             ws = sh.add_worksheet(title=LOG_TAB, rows=1000, cols=4)
         return ws, None
     except Exception as e:
-        return None, f"Opening log tab failed: {e}"
+        return None, f"Opening Log Tab Failed: {e}"
 
 
 def _ensure_headers(sheet) -> None:
