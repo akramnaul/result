@@ -347,11 +347,8 @@ def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
 st.set_page_config(page_title="FCC Result Portal", page_icon="🎓", layout="wide")
 st.title("🎓 Forman Christian College, Lahore")
 st.title("Assessment & Examination Office")
-st.caption("Facilitation Portal for Faculty, Staff, Students and Parents")
-st.caption(
-    "Authenticate, then enter a roll number to view overall attendance "
-    "and all tests' results."
-)
+st.subtitle("Facilitation Portal for Faculty, Staff, Students and Parents")
+st.caption("Authenticate first, then enter a roll number to view overall attendance and all tests' results.")
 
 # Startup: verify spreadsheet reachable
 _sh, _err = _open_spreadsheet()
