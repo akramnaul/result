@@ -112,7 +112,7 @@ def log_activity(email: str, activity) -> None:
         sheet.append_row(
             [serial, email, ts, val], 
             value_input_option="USER_ENTERED",
-            table_range='A1:D10000'  # 👈 Add this line
+            table_range='A1'  # 👈 Add this line
         )
         st.toast(f"📝 Logged #{serial}: {activity}", icon="✅")
     except Exception as e:
