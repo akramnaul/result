@@ -1,13 +1,23 @@
 # activity_logger.py
-from datetime import datetime
+"""
+Appends authentication and search events to the 'PortalActivity' Google Sheet.
+
+Log tab layout (row 1 = headers, row 2+ = data):
+    A = Serial (auto-increments from the highest existing value)
+    B = Email
+    C = Timestamp
+    D = Activity ('Authenticated' / 'Authentication Failed' / roll number)
+"""
+
 import json
+from datetime import datetime
 
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
-SHEET_NAME = "PortalActivity"
-WORKSHEET  = "Sheet1"
+SPREADSHEET_NAME = "PortalActivity"     # Google Sheets file name
+LOG_TAB          = "PortalLog"          # tab that holds the log
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -16,17 +26,13 @@ HEADERS = ["Serial", "Email", "Timestamp", "Activity"]
 
 
 @st.cache_resource(show_spinner=False)
-def _get_sheet():
-    """Return (worksheet, error). Surface real reason on failure."""
-    # Two supported secrets formats:
-    #   (A) gcp_service_account_json  -> whole JSON as one string (recommended)
-    #   (B) [gcp_service_account]     -> TOML table
+def _get_log_sheet():
+    """Return (worksheet, error). Surfaces real reason on failure."""
     try:
         if "gcp_service_account_json" in st.secrets:
             creds_dict = json.loads(st.secrets["gcp_service_account_json"])
         elif "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
-            # Heal private_key if pasted as escaped \n
             pk = creds_dict.get("private_key", "")
             if "\\n" in pk:
                 creds_dict["private_key"] = pk.replace("\\n", "\n")
@@ -46,10 +52,10 @@ def _get_sheet():
 
     try:
         client = gspread.authorize(creds)
-        sh = client.open(SHEET_NAME)
+        sh = client.open(SPREADSHEET_NAME)
     except gspread.SpreadsheetNotFound:
         return None, (
-            f"Sheet '{SHEET_NAME}' not found. Share it with "
+            f"Spreadsheet '{SPREADSHEET_NAME}' not found. Share it with "
             f"{creds_dict['client_email']} as Editor."
         )
     except Exception as e:
@@ -57,16 +63,16 @@ def _get_sheet():
 
     try:
         try:
-            ws = sh.worksheet(WORKSHEET)
+            ws = sh.worksheet(LOG_TAB)
         except gspread.WorksheetNotFound:
-            ws = sh.sheet1
+            # Create the log tab if it doesn't exist yet
+            ws = sh.add_worksheet(title=LOG_TAB, rows=1000, cols=4)
         return ws, None
     except Exception as e:
-        return None, f"Opening worksheet failed: {e}"
+        return None, f"Opening log tab failed: {e}"
 
 
 def _ensure_headers(sheet) -> None:
-    """Ensure row 1 has the four column headers."""
     try:
         first = sheet.row_values(1)
         if not first or len(first) < len(HEADERS):
@@ -76,12 +82,9 @@ def _ensure_headers(sheet) -> None:
 
 
 def _next_serial(sheet) -> int:
-    """
-    Read column A, find the highest numeric value, return it + 1.
-    Starts at 1 if column A has no numeric entries.
-    """
+    """Return 1 + the highest numeric value found in column A."""
     try:
-        col_a = sheet.col_values(1)   # includes header row
+        col_a = sheet.col_values(1)
     except Exception:
         return 1
     nums = []
@@ -97,18 +100,16 @@ def _next_serial(sheet) -> int:
 
 
 def log_activity(email: str, activity) -> None:
-    sheet, err = _get_sheet()
+    sheet, err = _get_log_sheet()
     if sheet is None:
         st.warning(f"⚠️ Log skipped: {err}")
         return
 
     try:
         _ensure_headers(sheet)
-
         serial = _next_serial(sheet)
         ts = datetime.now().strftime("%d %b %Y %H:%M:%S")
         val = activity if isinstance(activity, int) else str(activity)
-
         sheet.append_row(
             [serial, email, ts, val],
             value_input_option="USER_ENTERED",
