@@ -377,14 +377,14 @@ st.header("Step 1 — Authenticate")
 if not st.session_state.auth:
     with st.form("auth_form"):
         email_in = st.text_input(
-            "Faculty email", placeholder="akramnaul@fccollege.edu.pk"
+            "Faculty email", placeholder="you@fccollege.edu.pk"
         )
         submitted = st.form_submit_button("Authenticate")
 
     if submitted:
         target = normalize(email_in)
         if not target:
-            st.error("❌ Please enter an email.")
+            st.error("❌ Please Enter An EMail.")
         else:
             accepted = accepted_emails()
             if target in accepted:
@@ -395,7 +395,7 @@ if not st.session_state.auth:
             else:
                 log_auth_failure(target)
                 st.error(f"❌ `{email_in.strip()}` not found in `{AUTH_TAB}`.")
-                with st.expander("Show closest matches", expanded=True):
+                with st.expander("Show Closest Matches", expanded=True):
                     from difflib import get_close_matches
                     ms = get_close_matches(target, list(accepted), n=5, cutoff=0.5)
                     if ms:
@@ -439,7 +439,7 @@ if st.session_state.auth:
 
             if not to_check:
                 st.error(
-                    f"❌ None of the configured result tabs exist."
+                    f"❌ None of the Configured Result Tabs Exist."
                     f"Expected: {RESULT_TABS}. Found: {sorted(present)}"
                 )
                 st.session_state.results = []
@@ -459,7 +459,7 @@ if st.session_state.auth:
 
                 st.session_state.results = found
                 if not found:
-                    st.error(f"❌ Roll `{roll}` not found in any result tab.")
+                    st.error(f"❌ Roll `{roll}` NOT FOUND in any Result Tab.")
 
     # ============================================================
     # STEP 3 — DISPLAY
@@ -499,4 +499,4 @@ if st.session_state.auth:
 
         st.markdown("---")
         st.caption(
-            "ℹ️ `NotUploaded` = section header missing for that column. `—` = cell was blank.")
+            "ℹ️ `NotUploaded` = Section Header Missing for that Column. `—` = Cell was Blank.")
