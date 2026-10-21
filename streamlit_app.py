@@ -25,6 +25,26 @@ from activity_logger import (
     log_search,
 )
 
+def hide_sidebar():
+    st.markdown(
+        """
+        <style>
+        /* Hide the sidebar toggle button */
+        div[data-testid="stSidebarCollapsedControl"] {
+            display: none;
+        }
+        /* Hide the sidebar itself when expanded */
+        section[data-testid="stSidebar"][aria-expanded="true"] {
+            display: none;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# Call it right after st.set_page_config
+# hide_sidebar()
+
 # ============================================================
 # CONFIG
 # ============================================================
@@ -345,6 +365,7 @@ def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
 # UI
 # ============================================================
 st.set_page_config(page_title="FCC Result Portal", page_icon="🎓", layout="wide")
+hide.sidebar()
 st.title("🎓 Forman Christian College, Lahore")
 st.title("Assessment & Examination Office")
 st.caption("Facilitation Portal for Faculty, Staff, Students and Parents.")
