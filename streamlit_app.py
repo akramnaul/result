@@ -347,7 +347,7 @@ def extract_record(df: pd.DataFrame, row_idx: int) -> dict:
 st.set_page_config(page_title="FCC Result Portal", page_icon="🎓", layout="wide")
 st.title("🎓 Forman Christian College, Lahore")
 st.title("Assessment & Examination Office")
-st.subtitle("Facilitation Portal for Faculty, Staff, Students and Parents")
+st.caption("Facilitation Portal for Faculty, Staff, Students and Parents")
 st.caption("Authenticate first, then enter a roll number to view overall attendance and all tests' results.")
 
 # Startup: verify spreadsheet reachable
@@ -422,14 +422,14 @@ if st.session_state.auth:
             "Roll number",
             key="roll_input",
 #            value=str(st.session_state.roll) if st.session_state.roll else "",
-            placeholder="e.g. 277703101",
+            placeholder="e.g. 202830101",
         )
         search = st.form_submit_button("Search Results")
 
     if search:
         roll = normalize_roll(roll_raw)
         if roll is None or roll <= 0:
-            st.error(f"❌ `{roll_raw.strip()}` is not a valid roll number.")
+            st.error(f"❌ `{roll_raw.strip()}` is not a Valid FCC Roll Number.")
         else:
             st.session_state.roll = roll
             log_search(st.session_state.email, roll)
@@ -439,7 +439,7 @@ if st.session_state.auth:
 
             if not to_check:
                 st.error(
-                    f"❌ None of the configured result tabs exist. "
+                    f"❌ None of the configured result tabs exist."
                     f"Expected: {RESULT_TABS}. Found: {sorted(present)}"
                 )
                 st.session_state.results = []
@@ -499,6 +499,4 @@ if st.session_state.auth:
 
         st.markdown("---")
         st.caption(
-            "ℹ️ `NotUploaded` = section header missing for that column. "
-            "`—` = cell was blank."
-        )
+            "ℹ️ `NotUploaded` = section header missing for that column. `—` = cell was blank.")
