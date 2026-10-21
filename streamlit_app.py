@@ -361,13 +361,13 @@ st.session_state.setdefault("email", "")
 st.session_state.setdefault("roll", None)
 st.session_state.setdefault("results", [])
 
-#with st.sidebar:
+# with st.sidebar:
 #    st.caption("Source: Google Sheet")
 #    st.write(f"`{SPREADSHEET_NAME}`")
 #    tabs = available_tabs()
 #    st.write(f"Tabs: **{len(tabs)}**")
 #    st.caption(", ".join(tabs[:10]) + (" …" if len(tabs) > 10 else ""))
-#    st.write(f"Emails: **{len(accepted_emails())}**")
+#    st.write(f"Authenticated EMails: **{len(accepted_emails())}**")
 
 # ============================================================
 # STEP 1 — AUTH
