@@ -370,6 +370,7 @@ st.title("🎓 Forman Christian College, Lahore")
 st.title("Assessment & Examination Office")
 st.caption("Facilitation Portal for Faculty, Staff, Students and Parents.")
 st.caption("Authenticate First, then enter a Roll Number to view overall attendance and all tests' results.")
+hide_sidebar()
 
 # Startup: Verify Spreadsheet Reachable
 _sh, _err = _open_spreadsheet()
