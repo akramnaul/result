@@ -15,6 +15,7 @@ from datetime import datetime
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
+from zoneinfo import ZoneInfo
 
 SPREADSHEET_NAME = "PortalActivity"  # Google Sheets file name
 LOG_TAB          = "Activity"        # tab that holds the log
@@ -105,7 +106,10 @@ def log_activity(email: str, activity) -> None:
     try:
         _ensure_headers(sheet)
         serial = _next_serial(sheet)
-        ts = datetime.now().strftime("%d %b %Y %H:%M:%S")
+        # ts = datetime.now().strftime("%d %b %Y %H:%M:%S")
+        # from zoneinfo import ZoneInfo
+        ts = datetime.now(ZoneInfo("Asia/Karachi")).strftime("%d %b %Y %H:%M:%S")
+
         val = activity if isinstance(activity, int) else str(activity)
         sheet.append_row(
             [serial, email, ts, val], 
